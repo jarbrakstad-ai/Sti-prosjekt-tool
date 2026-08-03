@@ -17,7 +17,7 @@ import numpy as np
 from pyproj import Transformer
 
 from .analysis import Thresholds, analyze_trail
-from .dem import DemSampler
+from .dem import DemError, DemSampler
 from .gpx_io import TrailPoint
 from .terrain_metrics import segment_metrics
 
@@ -256,8 +256,14 @@ def suggest_route(
     start_x, start_y = to_dem.transform(start_latlon[1], start_latlon[0])
     end_x, end_y = to_dem.transform(end_latlon[1], end_latlon[0])
 
-    start_rc = dem.xy_to_nearest_rowcol(start_x, start_y)
-    end_rc = dem.xy_to_nearest_rowcol(end_x, end_y)
+    try:
+        start_rc = dem.xy_to_nearest_rowcol(start_x, start_y)
+    except DemError as exc:
+        raise RoutingError(f"Startpunktet ligger utenfor DEM-området: {exc}") from exc
+    try:
+        end_rc = dem.xy_to_nearest_rowcol(end_x, end_y)
+    except DemError as exc:
+        raise RoutingError(f"Sluttpunktet ligger utenfor DEM-området: {exc}") from exc
 
     if start_rc == end_rc:
         raise RoutingError("Start- og sluttpunkt havner i samme DEM-celle. Velg punkter lenger fra hverandre.")

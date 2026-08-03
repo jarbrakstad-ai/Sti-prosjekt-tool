@@ -103,7 +103,19 @@ class DemSampler:
         y = self.transform.f + self.transform.e * (np.asarray(row) + 0.5)
         return x, y
 
+    def contains_xy(self, x: float, y: float) -> bool:
+        """Om punktet (x, y) faktisk ligger innenfor DEM-ens dekningsområde."""
+        inv = ~self.transform
+        col, row = inv * (x, y)
+        n_rows, n_cols = self.shape()
+        return 0 <= col <= n_cols and 0 <= row <= n_rows
+
     def xy_to_nearest_rowcol(self, x: float, y: float) -> tuple[int, int]:
+        if not self.contains_xy(x, y):
+            raise DemError(
+                "Punktet ligger utenfor høydemodellens dekningsområde. Velg et punkt "
+                "innenfor DEM-området (evt. hent/last opp høydedata på nytt for riktig område)."
+            )
         rows, cols = self._fractional_rowcol(np.array([x]), np.array([y]))
         n_rows, n_cols = self.shape()
         row = int(np.clip(round(float(rows[0])), 0, n_rows - 1))

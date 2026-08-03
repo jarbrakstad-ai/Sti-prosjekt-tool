@@ -88,3 +88,28 @@ def test_raises_when_start_and_end_same_cell():
     start = latlon_for_rowcol(dem, 5, 5)
     with pytest.raises(RoutingError):
         suggest_route(dem, start, start, RouteOptions())
+
+
+def test_raises_when_start_point_outside_dem_instead_of_silently_clamping():
+    """Regresjonstest: et punkt utenfor DEM-dekningen skal gi tydelig feil,
+    ikke stille "klemmes" til nærmeste kant (som ga en trasé som startet et
+    annet sted enn brukeren faktisk klikket)."""
+    dem = make_flat_dem(size=40, cell=5.0)  # dekker 200x200 m
+    far_outside_x, far_outside_y = dem.rowcol_to_xy(-50, -50)
+    lon, lat = to_wgs84.transform(far_outside_x, far_outside_y)
+    start = (float(lat), float(lon))
+    end = latlon_for_rowcol(dem, 20, 20)
+
+    with pytest.raises(RoutingError, match="utenfor DEM-området"):
+        suggest_route(dem, start, end, RouteOptions())
+
+
+def test_raises_when_end_point_outside_dem():
+    dem = make_flat_dem(size=40, cell=5.0)
+    start = latlon_for_rowcol(dem, 5, 5)
+    far_outside_x, far_outside_y = dem.rowcol_to_xy(500, 500)
+    lon, lat = to_wgs84.transform(far_outside_x, far_outside_y)
+    end = (float(lat), float(lon))
+
+    with pytest.raises(RoutingError, match="utenfor DEM-området"):
+        suggest_route(dem, start, end, RouteOptions())
