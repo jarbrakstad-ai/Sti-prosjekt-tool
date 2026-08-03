@@ -737,9 +737,34 @@ function computeBankDegrees(analysis, n, tangents) {
   return bankDeg;
 }
 
+/** Bilineær sampling av terreng-gitterets høyde ved et vilkårlig (x, z)-punkt
+ * (samme lokale koordinatsystem som gitterets origin_x_m/origin_y_m). Brukes
+ * til å plassere trasé-båndet - slik at det alltid ligger nøyaktig på den
+ * (nedskalerte) terrengflaten som faktisk vises, i stedet for på analysens
+ * separat presist samplede høyde. De to kan ellers avvike synlig på ekte,
+ * ujevnt terreng siden terreng-gitteret er nedskalert for 3D-visningen mens
+ * analysen sampler full DEM-oppløsning bilineært i hvert trasépunkt. */
+function sampleGridElevation(grid, x, z) {
+  const colF = (x - grid.origin_x_m) / grid.cell_size_x_m;
+  const rowF = (z - grid.origin_y_m) / grid.cell_size_y_m;
+  const c0 = Math.max(0, Math.min(grid.cols - 1, Math.floor(colF)));
+  const r0 = Math.max(0, Math.min(grid.rows - 1, Math.floor(rowF)));
+  const c1 = Math.min(grid.cols - 1, c0 + 1);
+  const r1 = Math.min(grid.rows - 1, r0 + 1);
+  const fc = Math.min(1, Math.max(0, colF - c0));
+  const fr = Math.min(1, Math.max(0, rowF - r0));
+  const e00 = grid.elevations[r0][c0];
+  const e01 = grid.elevations[r0][c1];
+  const e10 = grid.elevations[r1][c0];
+  const e11 = grid.elevations[r1][c1];
+  const top = e00 * (1 - fc) + e01 * fc;
+  const bottom = e10 * (1 - fc) + e11 * fc;
+  return top * (1 - fr) + bottom * fr;
+}
+
 /** Bygger stien som et bånd med reell bredde: fysisk dosert i svinger, og med
  * stiliserte hopp-ramper (opptak -> gap -> landing) ved hopplinje-mulighetene. */
-function buildTrailRibbon(analysis, minElev, exaggeration) {
+function buildTrailRibbon(grid, analysis, minElev, exaggeration) {
   const DIRT_COLOR = new THREE.Color(0x8d6e4a);
   const JUMP_COLOR = new THREE.Color(0x8e24aa);
   const waypoints = analysis.waypoints;
@@ -747,7 +772,7 @@ function buildTrailRibbon(analysis, minElev, exaggeration) {
 
   const positions = waypoints.map((w) => ({
     x: w.x_m,
-    y: (w.elevation_m - minElev) * exaggeration,
+    y: (sampleGridElevation(grid, w.x_m, w.y_m) - minElev) * exaggeration,
     z: w.y_m,
   }));
   const tangents = computeTangents(positions);
@@ -869,7 +894,7 @@ function renderThreeScene(grid, analysis, exaggeration) {
 
   const { mesh, minElev } = buildTerrainMesh(grid, exaggeration);
   threeScene.add(mesh);
-  threeScene.add(buildTrailRibbon(analysis, minElev, exaggeration));
+  threeScene.add(buildTrailRibbon(grid, analysis, minElev, exaggeration));
 
   const terrainWidth = grid.cols * grid.cell_size_x_m;
   const terrainDepth = grid.rows * grid.cell_size_y_m;
