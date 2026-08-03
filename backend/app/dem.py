@@ -17,11 +17,47 @@ class DemError(ValueError):
     pass
 
 
+def _box_blur(array: np.ndarray, radius_px: int) -> np.ndarray:
+    """Nabolagsgjennomsnitt (separabel boks-smoothing), NaN-trygg.
+
+    Reelle høydemodeller (spesielt 1 m LiDAR-avledede DTM-er) har typisk noen
+    cm vertikal støy pr. piksel. Rådata-gradienten (np.gradient/finite-difference
+    på nabopiksler) forsterker denne støyen kraftig - et par cm feil over 1 m
+    kan gi flere prosentpoeng falsk helning. Denne funksjonen bygger et
+    utjevnet gitter (over ~radius_px piksler, altså en avstand relevant for
+    stibygging, ikke pikselnivå) som brukes til gradient/helnings-baserte
+    vurderinger, slik at analysen reflekterer terrengets faktiske trend i
+    stedet for målestøy."""
+    if radius_px <= 0:
+        return array.copy()
+
+    valid = ~np.isnan(array)
+    fill_value = float(np.nanmedian(array)) if valid.any() else 0.0
+    filled = np.where(valid, array, fill_value)
+
+    kernel = np.ones(2 * radius_px + 1) / (2 * radius_px + 1)
+
+    def blur_axis(a: np.ndarray, axis: int) -> np.ndarray:
+        padded = np.pad(a, [(radius_px, radius_px) if ax == axis else (0, 0) for ax in range(a.ndim)], mode="edge")
+        return np.apply_along_axis(lambda v: np.convolve(v, kernel, mode="valid"), axis, padded)
+
+    blurred = blur_axis(blur_axis(filled, axis=1), axis=0)
+    return np.where(valid, blurred, np.nan)
+
+
 @dataclass
 class DemSampler:
     array: np.ndarray  # shape (rows, cols), float, NaN der data mangler
     transform: Affine
     crs: object  # rasterio CRS eller pyproj CRS-kompatibel
+    grade_smoothing_radius_m: float = 2.0
+    """Utjevningsradius (meter) brukt for gradient/helnings-baserte vurderinger
+    (cross-slope, fall-line, langsgående helning) - dempet mot DEM-målestøy.
+    Selve høydeverdiene (elevation_m per punkt) forblir rå/upåvirket. Bare
+    virksom når pikselstørrelsen er finere enn radiusen (grov-oppløste DEM-er,
+    f.eks. 5-10 m/piksel, er allerede et romlig snitt og trenger ikke dette) -
+    ellers ville avrunding oppover til minimum 1 piksel smurt ut ekte
+    stibygging-relevante trekk (t.d. drenerende motfall hvert 15-50 m)."""
 
     def __post_init__(self) -> None:
         if self.transform.b != 0 or self.transform.d != 0:
@@ -29,8 +65,11 @@ class DemSampler:
                 "DEM må være nord-orientert (ingen rotasjon/skjevhet i transformen)."
             )
         dx, dy = self.pixel_size()
-        self.dzdx_grid = np.gradient(self.array, axis=1) / dx
-        self.dzdy_grid = np.gradient(self.array, axis=0) / dy
+        pixel_m = (abs(dx) + abs(dy)) / 2.0
+        radius_px = int(self.grade_smoothing_radius_m // pixel_m) if pixel_m > 0 else 0
+        self.smoothed_array = _box_blur(self.array, radius_px)
+        self.dzdx_grid = np.gradient(self.smoothed_array, axis=1) / dx
+        self.dzdy_grid = np.gradient(self.smoothed_array, axis=0) / dy
 
     @classmethod
     def from_geotiff_bytes(cls, content: bytes) -> "DemSampler":
@@ -87,6 +126,12 @@ class DemSampler:
 
     def sample_elevation(self, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
         return self._bilinear(self.array, xs, ys)
+
+    def sample_elevation_smoothed(self, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
+        """Som sample_elevation, men fra det utjevnede gitteret (se
+        grade_smoothing_radius_m) - brukes til langsgående helning/stigning
+        for å unngå at DEM-målestøy gir falske stibygging-brudd."""
+        return self._bilinear(self.smoothed_array, xs, ys)
 
     def sample_gradient(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Returnerer (dz/dx, dz/dy) i meter høyde per meter, i punktene (xs, ys)."""

@@ -193,3 +193,34 @@ def test_no_jump_opportunity_when_grade_varies_too_much():
 
     result = analyze_trail(pts, dem, Thresholds())
     assert result["jump_opportunities"] == []
+
+
+def test_realistic_dem_noise_does_not_fabricate_violations():
+    """Regresjonstest: en 1 m-oppløst DEM har typisk noen cm målestøy pr.
+    piksel. Rå punkt-til-punkt-gradient forsterker denne støyen kraftig (et par
+    cm avvik over 1-2 m gir flere prosentpoeng falsk helning), noe som tidligere
+    ga ustabile/varierende funn (half-rule-brudd, brå helningsendring, ustabil
+    maks-helning) på en trasé som i virkeligheten bare er en jevn 6 %-skråning.
+    DemSampler sin gradient-utjevning (grade_smoothing_radius_m) skal dempe
+    dette betydelig."""
+    size = 200
+    rng = np.random.default_rng(42)
+    rows = np.arange(size)[:, None]
+    clean_array = np.tile(1000.0 + 0.06 * np.arange(size), (size, 1))
+    noisy_array = clean_array + rng.normal(0, 0.08, (size, size))  # 8 cm std, realistisk DTM-støy
+    transform = Affine(1, 0, 500000, 0, -1, 6600100)
+
+    dem_clean = DemSampler(array=clean_array, transform=transform, crs=UTM)
+    dem_noisy = DemSampler(array=noisy_array, transform=transform, crs=UTM)
+
+    pts = points_from_xy([(500020 + 2.0 * i, 6600050) for i in range(100)])
+
+    clean_result = analyze_trail(pts, dem_clean, Thresholds())
+    noisy_result = analyze_trail(pts, dem_noisy, Thresholds())
+
+    assert clean_result["summary"]["max_grade_pct"] == pytest.approx(6.0, abs=0.1)
+    # Uten utjevning target dette til over 12 % og fabrikkerte half-rule-/
+    # brå-helningsbrudd; med utjevning skal maks-helning holde seg nær sannheten.
+    assert noisy_result["summary"]["max_grade_pct"] < 9.0
+    assert "half_rule_violation" not in noisy_result["summary"]["flag_counts"]
+    assert "abrupt_grade_transition" not in noisy_result["summary"]["flag_counts"]

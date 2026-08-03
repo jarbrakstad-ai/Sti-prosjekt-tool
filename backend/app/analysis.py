@@ -106,6 +106,11 @@ def analyze_trail(
     local_x = xs - dem.transform.c
     local_y = dem.transform.f - ys
     dem_elevations = dem.sample_elevation(xs, ys)
+    # Langsgående helning/stigning og drenerings-lokalminima beregnes fra det
+    # utjevnede gitteret - rå punkt-til-punkt-høyde er for følsom for
+    # DEM-målestøy (se DemSampler.grade_smoothing_radius_m), spesielt med tett
+    # punktavstand. elevation_m per punkt rapporteres fortsatt fra rådata.
+    dem_elevations_smooth = dem.sample_elevation_smoothed(xs, ys)
     dzdx, dzdy = dem.sample_gradient(xs, ys)
 
     n = len(points)
@@ -119,7 +124,7 @@ def analyze_trail(
     dzdx_mid = (dzdx[:-1] + dzdx[1:]) / 2.0
     dzdy_mid = (dzdy[:-1] + dzdy[1:]) / 2.0
 
-    delta_z = np.diff(dem_elevations)
+    delta_z = np.diff(dem_elevations_smooth)
     grade_pct = 100.0 * delta_z / seg_len
 
     cross_slope_pct, terrain_slope_pct, fall_line_angle_deg = segment_metrics(
@@ -168,8 +173,8 @@ def analyze_trail(
 
     # Grade reversals: lokale høydeminima langs traséen (dreneringspunkter).
     is_local_min = np.zeros(n, dtype=bool)
-    is_local_min[1:-1] = (dem_elevations[1:-1] < dem_elevations[:-2]) & (
-        dem_elevations[1:-1] < dem_elevations[2:]
+    is_local_min[1:-1] = (dem_elevations_smooth[1:-1] < dem_elevations_smooth[:-2]) & (
+        dem_elevations_smooth[1:-1] < dem_elevations_smooth[2:]
     )
 
     last_reversal_dist = 0.0

@@ -27,6 +27,20 @@ Begge modiene under trenger en høydemodell (DEM). Du kan enten:
   forbehold i modulens docstring) – juster der ved behov. Manuell opplasting
   fungerer uavhengig av dette.
 
+**Om DEM-målestøy og stabilitet:** Høyoppløste DEM-er (spesielt ~1 m
+LiDAR-avledede terrengmodeller) har typisk noen centimeters vertikal
+usikkerhet per piksel. Rå punkt-til-punkt-gradient forsterker denne støyen
+kraftig – noen få cm avvik over 1-2 m kan gi flere prosentpoeng falsk helning,
+noe som tidligere kunne gi ustabile/fabrikkerte funn (f.eks. half-rule-brudd
+eller brå helningsendringer som ikke er reelle) på en trasé som i
+virkeligheten er en jevn skråning. Gradient/helnings-baserte vurderinger
+(sidehelling, fall-line, langsgående helning) beregnes derfor fra et utjevnet
+gitter (`DemSampler.grade_smoothing_radius_m`, standard 2 m) – kun virksomt
+når DEM-oppløsningen er finere enn utjevningsradiusen, slik at grov-oppløste
+DEM-er (5-10 m/piksel, allerede et romlig snitt) ikke påvirkes og ekte
+stibygging-relevante trekk (f.eks. drenerende motfall hvert 15-50 m) ikke
+viskes ut. Rapporterte punkthøyder (`elevation_m`) forblir upåvirket/rå.
+
 ### 1. Vurder en gitt trasé
 
 Du laster opp:
