@@ -22,6 +22,9 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
 }).addTo(map);
 
+window.addEventListener("resize", () => map.invalidateSize());
+window.addEventListener("orientationchange", () => setTimeout(() => map.invalidateSize(), 200));
+
 const trailLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup().addTo(map);
