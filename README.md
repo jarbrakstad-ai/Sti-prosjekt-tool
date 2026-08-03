@@ -45,15 +45,23 @@ der kostnaden straffer:
 - Å følge fallinjen tett (oppmuntrer til at traséen legges mer på tvers av
   hellingen – konturering)
 - Half Rule-brudd (stigrad i forhold til sidehelling)
+- Brå retningsskift (straffer sikksakk, oppmuntrer til jevn flyt-rytme)
 - Reiseavstand (for å unngå unødvendige omveier)
 
-Søket er implementert som A* over DEM-rutenettet (8-naboer). Den foreslåtte
-traséen kjøres automatisk gjennom samme analyse som modus 1, slik at du
-umiddelbart ser gjenværende funn/score for forslaget.
+Søket er implementert som A* over DEM-rutenettet med 16 retninger (8 vanlige
+naboer + 8 "springer"-trekk) for finere vinkeloppløsning enn et rent 8-nabo-
+gitter. Den rå gitterruten glattes deretter med Chaikins hjørnekutting for en
+mer flytvennlig linje – med en sikkerhetssjekk: siden glatting er ren
+geometri og ikke kjenner til terrenget, kan den i prinsippet kutte hjørner inn
+i terreng søket egentlig unngikk (f.eks. rundt en bratt kant). Hvis glattingen
+gjør maks helning vesentlig verre enn den ujevnede ruten, forkastes glattingen
+og du får den ujevnede (men terreng-sikre) ruten i stedet (`search_stats.smoothed`
+i responsen forteller hvilken som ble brukt). Traséen kjøres automatisk gjennom
+samme analyse som modus 1, slik at du umiddelbart ser gjenværende funn/score
+for forslaget, og kan lastes ned som GPX eller GeoJSON fra nettsiden.
 
 **Dette er et heuristisk startforslag, ikke en ferdig prosjektert trasé.**
-Grid-baserte snarveier kan gi noe "hakkete" linjeføring, og resultatet må
-alltid kontrolleres i felt og av fagkyndig før bygging.
+Resultatet må alltid kontrolleres i felt og av fagkyndig før bygging.
 
 Referansegrunnlag: IMBA Trail Solutions (2004) sine prinsipper for
 bærekraftig stibygging ("Half Rule", "Ten Percent Guideline",

@@ -87,6 +87,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     suggestForm.hidden = !isSuggest;
     setStatus("");
     document.getElementById("report").innerHTML = "";
+    document.getElementById("download-buttons").hidden = true;
     trailLayer.clearLayers();
     markerLayer.clearLayers();
   });
@@ -118,6 +119,7 @@ analyzeForm.addEventListener("submit", async (e) => {
     const result = await res.json();
     setStatus("Ferdig.");
     markerLayer.clearLayers();
+    document.getElementById("download-buttons").hidden = true;
     renderMap(result.segments);
     renderReport(result);
   } catch (err) {
@@ -128,6 +130,47 @@ analyzeForm.addEventListener("submit", async (e) => {
 // ---- Foreslå trasé ----
 let pickedStart = null;
 let pickedEnd = null;
+let lastSuggestedRoute = null;
+
+function triggerDownload(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildGpx(points) {
+  const trkpts = points
+    .map(([lat, lon]) => `      <trkpt lat="${lat}" lon="${lon}"></trkpt>`)
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Sti-prosjekt-tool" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Foreslått trasé</name>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>
+</gpx>
+`;
+}
+
+document.getElementById("download-gpx").addEventListener("click", () => {
+  if (!lastSuggestedRoute) return;
+  triggerDownload("foreslatt-trase.gpx", buildGpx(lastSuggestedRoute.points), "application/gpx+xml");
+});
+
+document.getElementById("download-geojson").addEventListener("click", () => {
+  if (!lastSuggestedRoute) return;
+  const geojson = {
+    type: "FeatureCollection",
+    features: [{ type: "Feature", properties: {}, geometry: lastSuggestedRoute.route }],
+  };
+  triggerDownload("foreslatt-trase.geojson", JSON.stringify(geojson, null, 2), "application/geo+json");
+});
 
 function updatePickedPointsLabel() {
   const fmt = (p) => (p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "–");
@@ -191,9 +234,14 @@ suggestForm.addEventListener("submit", async (e) => {
       throw new Error(err.detail || "Ukjent feil");
     }
     const result = await res.json();
-    setStatus(`Ferdig. ${result.search_stats.path_nodes} punkter i forslaget.`);
+    const stats = result.search_stats;
+    setStatus(
+      `Ferdig. ${stats.final_points} punkter${stats.smoothed ? " (glattet)" : " (uglattet – se hint under)"}.`
+    );
     renderMap(result.analysis.segments);
     renderReport(result.analysis, { suggested: true });
+    lastSuggestedRoute = result;
+    document.getElementById("download-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }

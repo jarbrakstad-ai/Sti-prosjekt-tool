@@ -46,6 +46,8 @@ def test_flat_dem_route_is_direct_and_clean():
 
     assert result["analysis"]["summary"]["max_grade_pct"] < 1.0
     assert len(result["points"]) >= 2
+    assert result["search_stats"]["smoothed"] is True
+    assert result["search_stats"]["final_points"] > result["search_stats"]["raw_path_nodes"]
 
 
 def test_route_detours_around_steep_wall_instead_of_crossing_it():
@@ -68,6 +70,9 @@ def test_route_detours_around_steep_wall_instead_of_crossing_it():
         f"ruten burde krysse gjennom åpningen (rad ~27-32), fant {wall_crossings}"
     )
     assert result["analysis"]["summary"]["max_grade_pct"] < 20.0
+    # Glatting her ville kuttet hjørner inn i veggen (ren geometri, kjenner
+    # ikke til terrenget) -- forvent at sikkerhetsfallback til ujevnet rute slår inn.
+    assert result["search_stats"]["smoothed"] is False
 
 
 def test_raises_when_grid_too_large():
