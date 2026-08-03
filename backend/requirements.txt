@@ -8,3 +8,4 @@ gpxpy>=1.6
 pyproj>=3.6
 shapely>=2.0
 pytest>=8.0
+httpx>=0.27

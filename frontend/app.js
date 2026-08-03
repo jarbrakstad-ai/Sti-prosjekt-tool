@@ -22,7 +22,8 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
 }).addTo(map);
 
-let trailLayer = L.layerGroup().addTo(map);
+const trailLayer = L.layerGroup().addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
 
 function segmentSeverity(flags) {
   if (flags.some((f) => BAD_FLAGS.has(f))) return "bad";
@@ -50,10 +51,11 @@ function renderMap(segments) {
   if (bounds.length) map.fitBounds(bounds, { padding: [20, 20] });
 }
 
-function renderReport(result) {
+function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
   report.innerHTML = `
+    ${suggested ? "<h2>Foreslått trasé</h2><p class=\"hint\">Heuristisk forslag – kontroller i felt før bygging.</p>" : ""}
     <h2>Sammendrag</h2>
     <table>
       <tr><td>Total lengde</td><td>${s.total_length_m} m</td></tr>
@@ -74,7 +76,24 @@ function setStatus(message, isError = false) {
   el.className = isError ? "error" : "";
 }
 
-document.getElementById("analyze-form").addEventListener("submit", async (e) => {
+// ---- Modusbytte ----
+const analyzeForm = document.getElementById("analyze-form");
+const suggestForm = document.getElementById("suggest-form");
+
+document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+  radio.addEventListener("change", (e) => {
+    const isSuggest = e.target.value === "suggest";
+    analyzeForm.hidden = isSuggest;
+    suggestForm.hidden = !isSuggest;
+    setStatus("");
+    document.getElementById("report").innerHTML = "";
+    trailLayer.clearLayers();
+    markerLayer.clearLayers();
+  });
+});
+
+// ---- Vurder eksisterende trasé ----
+analyzeForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const trailFile = document.getElementById("trail-file").files[0];
   const demFile = document.getElementById("dem-file").files[0];
@@ -98,8 +117,83 @@ document.getElementById("analyze-form").addEventListener("submit", async (e) => 
     }
     const result = await res.json();
     setStatus("Ferdig.");
+    markerLayer.clearLayers();
     renderMap(result.segments);
     renderReport(result);
+  } catch (err) {
+    setStatus(`Feil: ${err.message}`, true);
+  }
+});
+
+// ---- Foreslå trasé ----
+let pickedStart = null;
+let pickedEnd = null;
+
+function updatePickedPointsLabel() {
+  const fmt = (p) => (p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "–");
+  document.getElementById("picked-points").textContent =
+    `Start: ${fmt(pickedStart)}   Slutt: ${fmt(pickedEnd)}`;
+}
+
+map.on("click", (e) => {
+  const isSuggestMode = document.querySelector('input[name="mode"]:checked').value === "suggest";
+  if (!isSuggestMode) return;
+
+  markerLayer.clearLayers();
+  if (!pickedStart || (pickedStart && pickedEnd)) {
+    pickedStart = e.latlng;
+    pickedEnd = null;
+  } else {
+    pickedEnd = e.latlng;
+  }
+  if (pickedStart) L.marker(pickedStart, { title: "Start" }).addTo(markerLayer).bindPopup("Start");
+  if (pickedEnd) L.marker(pickedEnd, { title: "Slutt" }).addTo(markerLayer).bindPopup("Slutt");
+  updatePickedPointsLabel();
+});
+
+document.getElementById("reset-points").addEventListener("click", () => {
+  pickedStart = null;
+  pickedEnd = null;
+  markerLayer.clearLayers();
+  updatePickedPointsLabel();
+});
+
+suggestForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const demFile = document.getElementById("suggest-dem-file").files[0];
+  const apiBase = document.getElementById("suggest-api-base").value.replace(/\/$/, "");
+  const trailType = document.getElementById("trail-type").value;
+  const targetGrade = document.getElementById("target-grade").value;
+
+  if (!demFile) {
+    setStatus("Velg en DEM-fil.", true);
+    return;
+  }
+  if (!pickedStart || !pickedEnd) {
+    setStatus("Klikk et start- og et sluttpunkt i kartet først.", true);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("dem", demFile);
+  formData.append("start_lat", pickedStart.lat);
+  formData.append("start_lon", pickedStart.lng);
+  formData.append("end_lat", pickedEnd.lat);
+  formData.append("end_lon", pickedEnd.lng);
+  formData.append("trail_type", trailType);
+  formData.append("target_grade_pct", targetGrade);
+
+  setStatus("Foreslår trasé …");
+  try {
+    const res = await fetch(`${apiBase}/api/suggest`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Ukjent feil");
+    }
+    const result = await res.json();
+    setStatus(`Ferdig. ${result.search_stats.path_nodes} punkter i forslaget.`);
+    renderMap(result.analysis.segments);
+    renderReport(result.analysis, { suggested: true });
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }

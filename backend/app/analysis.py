@@ -17,6 +17,7 @@ from pyproj import Transformer
 
 from .dem import DemSampler
 from .gpx_io import TrailPoint
+from .terrain_metrics import segment_metrics
 
 EPS = 1e-9
 
@@ -112,16 +113,9 @@ def analyze_trail(
     delta_z = np.diff(dem_elevations)
     grade_pct = 100.0 * delta_z / seg_len
 
-    cross_component = -uy * dzdx_mid + ux * dzdy_mid
-    cross_slope_pct = np.abs(cross_component) * 100.0
-
-    terrain_slope_pct = np.hypot(dzdx_mid, dzdy_mid) * 100.0
-
-    downhill_norm = np.hypot(dzdx_mid, dzdy_mid)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        cos_angle = -(ux * dzdx_mid + uy * dzdy_mid) / np.where(downhill_norm < EPS, np.nan, downhill_norm)
-    cos_angle = np.clip(cos_angle, -1.0, 1.0)
-    fall_line_angle_deg = np.degrees(np.arccos(np.abs(cos_angle)))
+    cross_slope_pct, terrain_slope_pct, fall_line_angle_deg = segment_metrics(
+        ux, uy, dzdx_mid, dzdy_mid
+    )
 
     segments: list[SegmentResult] = []
     for i in range(n - 1):

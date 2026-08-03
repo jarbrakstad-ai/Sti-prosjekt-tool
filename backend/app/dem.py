@@ -28,8 +28,9 @@ class DemSampler:
             raise DemError(
                 "DEM må være nord-orientert (ingen rotasjon/skjevhet i transformen)."
             )
-        self._dzdcol = np.gradient(self.array, axis=1)
-        self._dzdrow = np.gradient(self.array, axis=0)
+        dx, dy = self.pixel_size()
+        self.dzdx_grid = np.gradient(self.array, axis=1) / dx
+        self.dzdy_grid = np.gradient(self.array, axis=0) / dy
 
     @classmethod
     def from_geotiff_bytes(cls, content: bytes) -> "DemSampler":
@@ -89,7 +90,22 @@ class DemSampler:
 
     def sample_gradient(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Returnerer (dz/dx, dz/dy) i meter høyde per meter, i punktene (xs, ys)."""
-        dx, dy = self.pixel_size()
-        dzdx = self._bilinear(self._dzdcol, xs, ys) / dx
-        dzdy = self._bilinear(self._dzdrow, xs, ys) / dy
+        dzdx = self._bilinear(self.dzdx_grid, xs, ys)
+        dzdy = self._bilinear(self.dzdy_grid, xs, ys)
         return dzdx, dzdy
+
+    def shape(self) -> tuple[int, int]:
+        return self.array.shape
+
+    def rowcol_to_xy(self, row: np.ndarray, col: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Pikselsenter-koordinater (x, y) for gitt (row, col)."""
+        x = self.transform.c + self.transform.a * (np.asarray(col) + 0.5)
+        y = self.transform.f + self.transform.e * (np.asarray(row) + 0.5)
+        return x, y
+
+    def xy_to_nearest_rowcol(self, x: float, y: float) -> tuple[int, int]:
+        rows, cols = self._fractional_rowcol(np.array([x]), np.array([y]))
+        n_rows, n_cols = self.shape()
+        row = int(np.clip(round(float(rows[0])), 0, n_rows - 1))
+        col = int(np.clip(round(float(cols[0])), 0, n_cols - 1))
+        return row, col

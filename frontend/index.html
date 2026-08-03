@@ -15,6 +15,11 @@
 
   <main>
     <section id="controls">
+      <div id="mode-toggle">
+        <label><input type="radio" name="mode" value="analyze" checked /> Vurder eksisterende trasé</label>
+        <label><input type="radio" name="mode" value="suggest" /> Foreslå trasé</label>
+      </div>
+
       <form id="analyze-form">
         <label>
           Trasé (GPX eller GeoJSON)
@@ -30,6 +35,35 @@
         </label>
         <button type="submit">Analyser</button>
       </form>
+
+      <form id="suggest-form" hidden>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter)
+          <input type="file" id="suggest-dem-file" accept=".tif,.tiff" required />
+        </label>
+        <p class="hint">
+          Klikk startpunkt, deretter sluttpunkt i kartet (innenfor DEM-området).
+        </p>
+        <div id="picked-points">Start: – &nbsp; Slutt: –</div>
+        <button type="button" id="reset-points">Nullstill punkter</button>
+        <label>
+          Stitype
+          <select id="trail-type">
+            <option value="flow">Flytsti (jevn ønsket helning)</option>
+            <option value="xc">Terrengsykkelsti (generell)</option>
+          </select>
+        </label>
+        <label>
+          Ønsket helning (flytsti), %
+          <input type="number" id="target-grade" value="6" step="0.5" min="0" />
+        </label>
+        <label>
+          API-adresse
+          <input type="text" id="suggest-api-base" value="http://localhost:8000" />
+        </label>
+        <button type="submit">Foreslå trasé</button>
+      </form>
+
       <div id="status"></div>
       <div id="report"></div>
     </section>

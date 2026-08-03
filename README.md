@@ -4,7 +4,11 @@ Verktøy for å analysere en foreslått eller eksisterende sykkelsti (terrengsyk
 flytsti) opp mot anerkjent beste praksis for bærekraftig stibygging, basert på
 høydedata (DEM).
 
-## Hva verktøyet gjør (MVP)
+## Hva verktøyet gjør
+
+Verktøyet har to modus:
+
+### 1. Vurder en gitt trasé
 
 Du laster opp:
 1. En **tras**é som GPX-spor eller GeoJSON `LineString`
@@ -29,25 +33,52 @@ segment og samlet:
   glidende vindu — flytstier ønsker jevn, forutsigbar rytme fremfor brå
   skifter i gradient.
 
+### 2. Foreslå en ny trasé mellom to punkter
+
+Du laster opp en høydemodell og velger et start- og sluttpunkt (klikk i
+kartet, eller `start_lat/start_lon/end_lat/end_lon` mot API-et direkte).
+Verktøyet søker etter den linjen gjennom terrenget som gir lavest "kostnad",
+der kostnaden straffer:
+
+- Avvik fra ønsket helning (flytsti: jevn helning rundt et mål, f.eks. 6 %;
+  terrengsykkelsti: alt over maksgrensen straffes progressivt)
+- Å følge fallinjen tett (oppmuntrer til at traséen legges mer på tvers av
+  hellingen – konturering)
+- Half Rule-brudd (stigrad i forhold til sidehelling)
+- Reiseavstand (for å unngå unødvendige omveier)
+
+Søket er implementert som A* over DEM-rutenettet (8-naboer). Den foreslåtte
+traséen kjøres automatisk gjennom samme analyse som modus 1, slik at du
+umiddelbart ser gjenværende funn/score for forslaget.
+
+**Dette er et heuristisk startforslag, ikke en ferdig prosjektert trasé.**
+Grid-baserte snarveier kan gi noe "hakkete" linjeføring, og resultatet må
+alltid kontrolleres i felt og av fagkyndig før bygging.
+
 Referansegrunnlag: IMBA Trail Solutions (2004) sine prinsipper for
 bærekraftig stibygging ("Half Rule", "Ten Percent Guideline",
 "Grade Reversals", "Avoid the Fall Line"), tilpasset for sykkelsti-/
 flytsti-kontekst. Dette er **veiledende terskler**, ikke en offisiell norsk
-standard — juster konstantene i `backend/app/analysis.py` etter lokale forhold
-og eventuelt gjeldende retningslinjer (f.eks. fra kommune/grunneier/NOTS).
+standard — juster konstantene i `backend/app/analysis.py` og
+`backend/app/routing.py` etter lokale forhold og eventuelt gjeldende
+retningslinjer (f.eks. fra kommune/grunneier/NOTS).
 
 ## Arkitektur
 
 ```
 backend/    FastAPI-tjeneste som gjør selve geodata-analysen
   app/
-    main.py       API: POST /api/analyze
-    gpx_io.py      Parsing av GPX/GeoJSON til punktliste
-    dem.py         Lesing/sampling av DEM (høyde + terrenggradient)
-    analysis.py    Kjernelogikk: half-rule, helning, fall-line, reversals
-    schemas.py      Pydantic-modeller for request/response
+    main.py             API: POST /api/analyze, POST /api/suggest
+    gpx_io.py            Parsing av GPX/GeoJSON til punktliste
+    dem.py               Lesing/sampling av DEM (høyde + terrenggradient)
+    terrain_metrics.py   Delt vektorgeometri (sidehelling, fall-line-vinkel)
+    analysis.py          Vurder gitt trasé: half-rule, helning, reversals
+    routing.py           Foreslå ny trasé: A*-søk med samme kostnadsprinsipper
+    schemas.py           Pydantic-modeller for /api/analyze-respons
   tests/
-    test_analysis.py  Enhetstester med syntetisk DEM (ingen fil nødvendig)
+    test_analysis.py  Enhetstester for trasé-vurdering (syntetisk DEM)
+    test_routing.py   Enhetstester for trasé-forslag (syntetisk DEM)
+    test_api.py       Integrasjonstester av begge endepunktene (ekte GeoTIFF)
 
 frontend/   Enkel statisk nettside (Leaflet-kart) som laster opp filer,
             kaller backend og visualiserer traséen fargekodet etter funn.
@@ -85,9 +116,11 @@ pytest
 
 ## Begrensninger / videre arbeid
 
-- MVP evaluerer en **gitt** trasé. Automatisk *forslag* til ny trasé mellom
-  to punkter (minste-kost-sti på helning/fallinje) er en naturlig
-  videreføring, men ikke del av denne leveransen.
+- Trasé-forslaget er et grid-basert A*-søk – det gir en heuristisk linje,
+  ikke en ferdig prosjektert trasé, og bør etterbehandles/kontrolleres i
+  felt (og evt. glattes) før bygging.
+- For store DEM-er (mer enn ca. 400×400 celler) avvises forslag-søket med en
+  feilmelding – beskjær DEM til analyseområdet først.
 - DEM må være i et projisert CRS i meter (f.eks. UTM). Geografisk DEM
   (grader) støttes ikke ennå.
 - Ingen automatisk henting fra hoydedata.no/OSM ennå — bruker laster opp
