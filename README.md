@@ -50,6 +50,15 @@ segment og samlet:
 - **Flyt-konsistens** (tillegg for flytstier): variasjon i helning over et
   glidende vindu — flytstier ønsker jevn, forutsigbar rytme fremfor brå
   skifter i gradient.
+- **Hopplinje-muligheter**: sammenhengende, jevne nedoverbakke-partier (moderat
+  helning, lite variasjon, lav sidehelling) der et hopp/tabletop kan få en
+  naturlig landing i stedet for en flat/hard landing. Dette er en grov
+  geometrisk heuristikk (helning + konsistens), **ikke** en fysisk
+  hopp-/banesimulering – den tar ikke hensyn til innkjørselsfart, faktisk
+  sprangvidde/trajectory eller sikt. Markeres med lilla stiplet linje i
+  kartet og listes i rapporten; må detaljprosjekteres og kontrolleres i felt
+  av kompetent hopplinje-/stibygger før bygging. Terskler kan justeres i
+  `backend/app/jump_features.py`.
 
 Både denne modusen og trasé-forslag under viser en **liste over GPS-punkter**
 (lat/lon, høyde, avstand fra start) for hvert punkt langs traséen – i en
@@ -124,6 +133,7 @@ backend/    FastAPI-tjeneste som gjør selve geodata-analysen
     dem_fetch.py          Automatisk henting av DEM fra Kartverkets WCS-tjeneste
     terrain_metrics.py   Delt vektorgeometri (sidehelling, fall-line-vinkel)
     analysis.py          Vurder gitt trasé: half-rule, helning, reversals
+    jump_features.py      Finner mulige hopplinje-partier (jevn nedoverbakke)
     routing.py           Foreslå ny trasé: A*-søk med samme kostnadsprinsipper
     schemas.py           Pydantic-modeller for /api/analyze-respons
   tests/

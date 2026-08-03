@@ -36,8 +36,20 @@ class Segment(BaseModel):
     flags: list[str]
 
 
+class JumpOpportunity(BaseModel):
+    start_index: int
+    end_index: int
+    start: tuple[float, float]
+    end: tuple[float, float]
+    length_m: float
+    avg_grade_pct: float
+    grade_variation_pct: float
+    note: str
+
+
 class AnalyzeResponse(BaseModel):
     summary: Summary
     recommendations: list[str]
+    jump_opportunities: list[JumpOpportunity]
     waypoints: list[Waypoint]
     segments: list[Segment]

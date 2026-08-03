@@ -170,6 +170,7 @@ main {
 .dot.ok { background: var(--ok); }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--bad); }
+.dot.jump { background: #8e24aa; }
 
 #report { font-size: 0.85rem; }
 #report h2 { font-size: 1rem; margin-bottom: 0.25rem; }

@@ -17,6 +17,7 @@ from pyproj import Transformer
 
 from .dem import DemSampler
 from .gpx_io import TrailPoint
+from .jump_features import JumpCriteria, find_jump_opportunities
 from .terrain_metrics import segment_metrics
 
 EPS = 1e-9
@@ -90,11 +91,13 @@ def analyze_trail(
     points: list[TrailPoint],
     dem: DemSampler,
     thresholds: Thresholds | None = None,
+    jump_criteria: JumpCriteria | None = None,
 ) -> dict:
     if len(points) < 2:
         raise ValueError("Traséen må ha minst 2 punkter.")
 
     t = thresholds or Thresholds()
+    jc = jump_criteria or JumpCriteria()
 
     xs, ys = _project_points(points, dem.crs)
     dem_elevations = dem.sample_elevation(xs, ys)
@@ -215,6 +218,10 @@ def analyze_trail(
 
     recommendations = _build_recommendations(flag_counts, weighted_avg_grade, t)
 
+    jump_opportunities = find_jump_opportunities(
+        points, grade_pct, cross_slope_pct, seg_len, cum_dist, jc
+    )
+
     return {
         "summary": {
             "total_length_m": round(total_length, 1),
@@ -228,6 +235,7 @@ def analyze_trail(
             "sustainability_score": score,
         },
         "recommendations": recommendations,
+        "jump_opportunities": jump_opportunities,
         "waypoints": [
             {
                 "index": i,

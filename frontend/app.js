@@ -28,6 +28,7 @@ window.addEventListener("orientationchange", () => setTimeout(() => map.invalida
 const trailLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup().addTo(map);
+const jumpLayer = L.layerGroup().addTo(map);
 
 function segmentSeverity(flags) {
   if (flags.some((f) => BAD_FLAGS.has(f))) return "bad";
@@ -100,6 +101,44 @@ function renderWaypointMarkers(waypoints) {
   });
 }
 
+function renderJumpOpportunities(jumpOpportunities) {
+  jumpLayer.clearLayers();
+  for (const opp of jumpOpportunities || []) {
+    L.polyline([opp.start, opp.end], {
+      color: "#8e24aa",
+      weight: 7,
+      opacity: 0.85,
+      dashArray: "2,10",
+      lineCap: "round",
+    })
+      .addTo(jumpLayer)
+      .bindPopup(
+        `<strong>Mulig hopplinje</strong><br>${opp.length_m} m, snitt-helning ~${Math.abs(opp.avg_grade_pct)}%` +
+          `<br>${opp.note}`
+      );
+  }
+}
+
+function renderJumpOpportunitiesSection(jumpOpportunities) {
+  if (!jumpOpportunities || jumpOpportunities.length === 0) {
+    return `
+      <h2>Hopplinje-muligheter</h2>
+      <p class="hint">Ingen jevne nedoverbakke-partier funnet som naturlig egner seg til hopp/tabletop uten videre tilpasning.</p>
+    `;
+  }
+  const items = jumpOpportunities
+    .map(
+      (opp) =>
+        `<li>${opp.length_m} m, snitt-helning ~${Math.abs(opp.avg_grade_pct)} % (variasjon ${opp.grade_variation_pct} pp) – ${opp.note}</li>`
+    )
+    .join("");
+  return `
+    <h2>Hopplinje-muligheter (${jumpOpportunities.length})</h2>
+    <p class="hint">Grov heuristikk basert på jevn nedoverbakke – markert med lilla stiplet linje i kartet. Må detaljprosjekteres og kontrolleres i felt (fart inn, sprangvidde, sikt) før bygging.</p>
+    <ul>${items}</ul>
+  `;
+}
+
 function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
@@ -116,9 +155,11 @@ function renderReport(result, { suggested } = {}) {
     </table>
     <h2>Anbefalinger</h2>
     <ul>${result.recommendations.map((r) => `<li>${r}</li>`).join("")}</ul>
+    ${renderJumpOpportunitiesSection(result.jump_opportunities)}
     ${renderWaypointsTable(result.waypoints)}
   `;
   renderWaypointMarkers(result.waypoints);
+  renderJumpOpportunities(result.jump_opportunities);
 }
 
 function setStatus(message, isError = false) {
@@ -189,6 +230,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     trailLayer.clearLayers();
     markerLayer.clearLayers();
     waypointLayer.clearLayers();
+    jumpLayer.clearLayers();
   });
 });
 

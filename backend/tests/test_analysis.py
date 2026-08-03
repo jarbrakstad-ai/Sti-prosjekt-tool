@@ -120,3 +120,43 @@ def test_requires_at_least_two_points():
     dem = make_tilted_plane_dem()
     with pytest.raises(ValueError):
         analyze_trail(points_from_xy([(500100, 6600050)]), dem, Thresholds())
+
+
+def test_jump_opportunity_found_on_consistent_moderate_descent():
+    dem = make_tilted_plane_dem(grade=0.15)  # jevn 15% nedoverbakke, rett fallinje
+    pts = points_from_xy([(500100, y) for y in range(6600080, 6600010, -20)])
+    result = analyze_trail(pts, dem, Thresholds())
+
+    opps = result["jump_opportunities"]
+    assert len(opps) == 1
+    opp = opps[0]
+    assert opp["avg_grade_pct"] == pytest.approx(-15.0, abs=0.5)
+    assert opp["grade_variation_pct"] < 1.0
+    assert opp["length_m"] > 50.0
+
+
+def test_no_jump_opportunity_on_flat_contouring_trail():
+    dem = make_tilted_plane_dem()
+    pts = points_from_xy([(x, 6600050) for x in range(500020, 500190, 20)])
+    result = analyze_trail(pts, dem, Thresholds())
+    assert result["jump_opportunities"] == []
+
+
+def test_no_jump_opportunity_when_grade_too_steep():
+    dem = make_tilted_plane_dem(grade=0.50)  # 50% - for bratt for et enkelt naturlig hopp
+    pts = points_from_xy([(500100, y) for y in range(6600080, 6600010, -20)])
+    result = analyze_trail(pts, dem, Thresholds())
+    assert result["jump_opportunities"] == []
+
+
+def test_no_jump_opportunity_when_grade_varies_too_much():
+    # Vekselvis -10% og -25% helning - begge enkeltvis innenfor terskelen, men
+    # for stor variasjon mellom naboseg­menter til å regnes som én jevn skråning.
+    elevations = [1000.0]
+    for i in range(6):
+        elevations.append(elevations[-1] - (1.0 if i % 2 == 0 else 2.5))
+    dem = _flat_crossslope_dem(elevations)
+    pts = points_from_xy([(500005 + 10 * i, 6600050) for i in range(len(elevations))])
+
+    result = analyze_trail(pts, dem, Thresholds())
+    assert result["jump_opportunities"] == []
