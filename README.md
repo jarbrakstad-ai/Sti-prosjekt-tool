@@ -71,6 +71,23 @@ standard — juster konstantene i `backend/app/analysis.py` og
 `backend/app/routing.py` etter lokale forhold og eventuelt gjeldende
 retningslinjer (f.eks. fra kommune/grunneier/NOTS).
 
+## Driftsatt frontend (GitHub Pages)
+
+`frontend/` er ren statisk HTML/JS/CSS og deployes automatisk til GitHub
+Pages via `.github/workflows/deploy-pages.yml` ved push til `main` (og denne
+grenen). **Merk:** GitHub Pages kan kun være vert for frontenden – backend-
+API-et (FastAPI) må kjøre et annet sted (lokalt hos deg, eller på en tjeneste
+som Render/Fly.io/en egen server), siden Pages bare serverer statiske filer.
+Skriv adressen til din kjørende backend inn i "API-adresse"-feltet på siden.
+Kjører backend lokalt på `http://localhost:8000`, fungerer det fint å peke dit
+selv fra en `https://`-side, siden nettlesere regner `localhost` som en
+"trygg" opprinnelse.
+
+Første gang: workflowen krever at **GitHub Pages er skrudd på i repoet**
+(Settings → Pages → "Build and deployment" → Source: **GitHub Actions**).
+Dette er en engangs-innstilling som må gjøres av en med admin-tilgang til
+repoet – selve deployen kjører deretter automatisk ved hver push.
+
 ## Arkitektur
 
 ```
