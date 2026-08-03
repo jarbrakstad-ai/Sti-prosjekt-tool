@@ -40,17 +40,34 @@ function severityColor(sev) {
   return { ok: "#2e7d32", warn: "#f9a825", bad: "#c62828" }[sev];
 }
 
+function segmentMidpoint(seg) {
+  return [(seg.start[0] + seg.end[0]) / 2, (seg.start[1] + seg.end[1]) / 2];
+}
+
 function renderMap(segments) {
   trailLayer.clearLayers();
   const bounds = [];
   for (const seg of segments) {
     const sev = segmentSeverity(seg.flags);
     const latlngs = [seg.start, seg.end];
-    L.polyline(latlngs, { color: severityColor(sev), weight: 5 }).addTo(trailLayer)
-      .bindPopup(
-        `Segment ${seg.index}: ${seg.length_m} m, helning ${seg.grade_pct}%` +
-          (seg.flags.length ? `<br>${seg.flags.map((f) => FLAG_LABELS[f] || f).join("<br>")}` : "<br>Ingen funn")
-      );
+    const color = severityColor(sev);
+    const popupHtml =
+      `Segment ${seg.index}: ${seg.length_m} m, helning ${seg.grade_pct}%` +
+      (seg.flags.length ? `<br>${seg.flags.map((f) => FLAG_LABELS[f] || f).join("<br>")}` : "<br>Ingen funn");
+
+    L.polyline(latlngs, { color, weight: 5 }).addTo(trailLayer).bindPopup(popupHtml);
+
+    L.marker(segmentMidpoint(seg), {
+      icon: L.divIcon({
+        className: `seg-label sev-${sev}`,
+        html: `<span style="background:${color}">#${seg.index} ${seg.grade_pct}%</span>`,
+        iconSize: null,
+      }),
+      interactive: true,
+    })
+      .addTo(trailLayer)
+      .bindPopup(popupHtml);
+
     bounds.push(latlngs[0], latlngs[1]);
   }
   if (bounds.length) map.fitBounds(bounds, { padding: [20, 20] });
