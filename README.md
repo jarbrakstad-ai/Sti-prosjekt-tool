@@ -33,6 +33,13 @@ segment og samlet:
   glidende vindu — flytstier ønsker jevn, forutsigbar rytme fremfor brå
   skifter i gradient.
 
+Både denne modusen og trasé-forslag under viser en **liste over GPS-punkter**
+(lat/lon, høyde, avstand fra start) for hvert punkt langs traséen – i en
+tabell på siden og som nummererte punkter i kartet – slik at du kan ta med
+koordinatene ut i felt for å gå opp/kontrollere linjen. Traséen kan også
+lastes ned direkte som **GPX** eller **GeoJSON** for bruk i en GPS-enhet
+eller turapp.
+
 ### 2. Foreslå en ny trasé mellom to punkter
 
 Du laster opp en høydemodell og velger et start- og sluttpunkt (klikk i

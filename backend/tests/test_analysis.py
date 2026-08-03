@@ -40,6 +40,22 @@ def test_fall_line_trail_is_flagged_high_risk():
     assert "half_rule_violation" not in flags
 
 
+def test_waypoints_list_matches_input_points():
+    dem = make_tilted_plane_dem()
+    xy = [(500100, y) for y in range(6600080, 6600010, -20)]
+    pts = points_from_xy(xy)
+    result = analyze_trail(pts, dem, Thresholds())
+
+    waypoints = result["waypoints"]
+    assert len(waypoints) == len(pts)
+    assert waypoints[0]["distance_from_start_m"] == 0.0
+    assert waypoints[-1]["distance_from_start_m"] == pytest.approx(result["summary"]["total_length_m"], abs=0.1)
+    for wp, p in zip(waypoints, pts):
+        assert wp["lat"] == pytest.approx(p.lat, abs=1e-5)
+        assert wp["lon"] == pytest.approx(p.lon, abs=1e-5)
+        assert isinstance(wp["elevation_m"], float)
+
+
 def test_contouring_trail_is_clean():
     dem = make_tilted_plane_dem()
     pts = points_from_xy([(x, 6600050) for x in range(500020, 500190, 20)])

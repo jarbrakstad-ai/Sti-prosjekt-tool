@@ -135,3 +135,17 @@ main {
 #report td, #report th { padding: 0.15rem 0.3rem; text-align: left; border-bottom: 1px solid rgba(128,128,128,0.2); }
 #report ul { padding-left: 1.1rem; }
 #report li { margin-bottom: 0.35rem; }
+
+.waypoints-table {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  border-radius: 4px;
+  margin-bottom: 0.25rem;
+}
+.waypoints-table table { margin-bottom: 0; font-size: 0.78rem; }
+.waypoints-table thead th {
+  position: sticky;
+  top: 0;
+  background: Canvas;
+}

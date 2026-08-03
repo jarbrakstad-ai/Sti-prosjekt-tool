@@ -24,6 +24,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 const trailLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
+const waypointLayer = L.layerGroup().addTo(map);
 
 function segmentSeverity(flags) {
   if (flags.some((f) => BAD_FLAGS.has(f))) return "bad";
@@ -51,6 +52,51 @@ function renderMap(segments) {
   if (bounds.length) map.fitBounds(bounds, { padding: [20, 20] });
 }
 
+const MAX_WAYPOINT_ROWS = 500;
+
+function renderWaypointsTable(waypoints) {
+  const shown = waypoints.slice(0, MAX_WAYPOINT_ROWS);
+  const rows = shown
+    .map(
+      (w) =>
+        `<tr><td>${w.index}</td><td>${w.lat.toFixed(6)}</td><td>${w.lon.toFixed(6)}</td>` +
+        `<td>${w.elevation_m.toFixed(1)}</td><td>${w.distance_from_start_m.toFixed(0)}</td></tr>`
+    )
+    .join("");
+  const truncatedNote =
+    waypoints.length > MAX_WAYPOINT_ROWS
+      ? `<p class="hint">Viser de første ${MAX_WAYPOINT_ROWS} av ${waypoints.length} punkter. Last ned GPX/GeoJSON for hele traséen.</p>`
+      : "";
+  return `
+    <h2>GPS-punkter (${waypoints.length})</h2>
+    <p class="hint">Punktene er også markert i kartet. Bruk disse i felt, eller last ned som GPX/GeoJSON under.</p>
+    <div class="waypoints-table">
+      <table>
+        <thead><tr><th>#</th><th>Lat</th><th>Lon</th><th>Høyde (m)</th><th>Dist. (m)</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${truncatedNote}
+  `;
+}
+
+function renderWaypointMarkers(waypoints) {
+  waypointLayer.clearLayers();
+  const stride = Math.max(1, Math.ceil(waypoints.length / 150));
+  waypoints.forEach((w, i) => {
+    if (i % stride !== 0 && i !== waypoints.length - 1) return;
+    L.circleMarker([w.lat, w.lon], {
+      radius: 4,
+      color: "#1565c0",
+      fillColor: "#1565c0",
+      fillOpacity: 0.9,
+      weight: 1,
+    })
+      .addTo(waypointLayer)
+      .bindPopup(`Punkt ${w.index}: ${w.lat.toFixed(6)}, ${w.lon.toFixed(6)}<br>Høyde: ${w.elevation_m} m<br>Distanse: ${w.distance_from_start_m} m`);
+  });
+}
+
 function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
@@ -67,7 +113,9 @@ function renderReport(result, { suggested } = {}) {
     </table>
     <h2>Anbefalinger</h2>
     <ul>${result.recommendations.map((r) => `<li>${r}</li>`).join("")}</ul>
+    ${renderWaypointsTable(result.waypoints)}
   `;
+  renderWaypointMarkers(result.waypoints);
 }
 
 function setStatus(message, isError = false) {
@@ -90,6 +138,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     document.getElementById("download-buttons").hidden = true;
     trailLayer.clearLayers();
     markerLayer.clearLayers();
+    waypointLayer.clearLayers();
   });
 });
 
@@ -119,9 +168,16 @@ analyzeForm.addEventListener("submit", async (e) => {
     const result = await res.json();
     setStatus("Ferdig.");
     markerLayer.clearLayers();
-    document.getElementById("download-buttons").hidden = true;
     renderMap(result.segments);
     renderReport(result);
+    lastExportData = {
+      points: result.waypoints.map((w) => [w.lat, w.lon]),
+      route: {
+        type: "LineString",
+        coordinates: result.waypoints.map((w) => [w.lon, w.lat]),
+      },
+    };
+    document.getElementById("download-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
@@ -130,7 +186,7 @@ analyzeForm.addEventListener("submit", async (e) => {
 // ---- Foreslå trasé ----
 let pickedStart = null;
 let pickedEnd = null;
-let lastSuggestedRoute = null;
+let lastExportData = null;
 
 function triggerDownload(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
@@ -149,7 +205,7 @@ function buildGpx(points) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Sti-prosjekt-tool" xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
-    <name>Foreslått trasé</name>
+    <name>Trasé (Sti-prosjekt-tool)</name>
     <trkseg>
 ${trkpts}
     </trkseg>
@@ -159,17 +215,17 @@ ${trkpts}
 }
 
 document.getElementById("download-gpx").addEventListener("click", () => {
-  if (!lastSuggestedRoute) return;
-  triggerDownload("foreslatt-trase.gpx", buildGpx(lastSuggestedRoute.points), "application/gpx+xml");
+  if (!lastExportData) return;
+  triggerDownload("trase.gpx", buildGpx(lastExportData.points), "application/gpx+xml");
 });
 
 document.getElementById("download-geojson").addEventListener("click", () => {
-  if (!lastSuggestedRoute) return;
+  if (!lastExportData) return;
   const geojson = {
     type: "FeatureCollection",
-    features: [{ type: "Feature", properties: {}, geometry: lastSuggestedRoute.route }],
+    features: [{ type: "Feature", properties: {}, geometry: lastExportData.route }],
   };
-  triggerDownload("foreslatt-trase.geojson", JSON.stringify(geojson, null, 2), "application/geo+json");
+  triggerDownload("trase.geojson", JSON.stringify(geojson, null, 2), "application/geo+json");
 });
 
 function updatePickedPointsLabel() {
@@ -240,7 +296,7 @@ suggestForm.addEventListener("submit", async (e) => {
     );
     renderMap(result.analysis.segments);
     renderReport(result.analysis, { suggested: true });
-    lastSuggestedRoute = result;
+    lastExportData = { points: result.points, route: result.route };
     document.getElementById("download-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);

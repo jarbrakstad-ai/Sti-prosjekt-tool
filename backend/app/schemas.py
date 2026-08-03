@@ -16,6 +16,14 @@ class Summary(BaseModel):
     sustainability_score: float
 
 
+class Waypoint(BaseModel):
+    index: int
+    lat: float
+    lon: float
+    elevation_m: float
+    distance_from_start_m: float
+
+
 class Segment(BaseModel):
     index: int
     start: tuple[float, float]
@@ -31,4 +39,5 @@ class Segment(BaseModel):
 class AnalyzeResponse(BaseModel):
     summary: Summary
     recommendations: list[str]
+    waypoints: list[Waypoint]
     segments: list[Segment]

@@ -103,6 +103,7 @@ def analyze_trail(
     n = len(points)
     seg_len = np.hypot(np.diff(xs), np.diff(ys))
     seg_len = np.where(seg_len < EPS, EPS, seg_len)
+    cum_dist = np.concatenate([[0.0], np.cumsum(seg_len)])
 
     ux = np.diff(xs) / seg_len
     uy = np.diff(ys) / seg_len
@@ -162,7 +163,6 @@ def analyze_trail(
     is_local_min[1:-1] = (dem_elevations[1:-1] < dem_elevations[:-2]) & (
         dem_elevations[1:-1] < dem_elevations[2:]
     )
-    cum_dist = np.concatenate([[0.0], np.cumsum(seg_len)])
 
     last_reversal_dist = 0.0
     descent_start_dist = None
@@ -228,6 +228,16 @@ def analyze_trail(
             "sustainability_score": score,
         },
         "recommendations": recommendations,
+        "waypoints": [
+            {
+                "index": i,
+                "lat": round(points[i].lat, 6),
+                "lon": round(points[i].lon, 6),
+                "elevation_m": round(float(dem_elevations[i]), 1),
+                "distance_from_start_m": round(float(cum_dist[i]), 1),
+            }
+            for i in range(n)
+        ],
         "segments": [
             {
                 "index": s.index,
