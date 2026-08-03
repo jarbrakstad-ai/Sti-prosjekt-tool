@@ -695,36 +695,163 @@ function buildTerrainMesh(grid, exaggeration) {
   return { mesh: new THREE.Mesh(geometry, material), minElev };
 }
 
-function buildTrailLines(analysis, minElev, exaggeration) {
-  const group = new THREE.Group();
+const TRAIL_HALF_WIDTH_M = 0.6; // ~1,2 m stibredde (typisk singletrack)
+const MAX_VISUAL_BANK_DEG = 35; // tak for hvor bratt vi faktisk tegner dosering (rent visuelt)
+const JUMP_LIP_HEIGHT_M = 1.0; // høyde på hopp-kicker over terrenget, før eksaggerasjon
+
+/** Sentraldifferanse-tangent (retning) i XZ-planet for hvert trasépunkt. */
+function computeTangents(positions) {
+  const n = positions.length;
+  const tangents = [];
+  for (let i = 0; i < n; i++) {
+    const a = i === 0 ? positions[0] : positions[i - 1];
+    const b = i === n - 1 ? positions[n - 1] : positions[i + 1];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    tangents.push({ x: dx / len, z: dz / len });
+  }
+  return tangents;
+}
+
+/** Doseringsvinkel (grader, signert) per trasépunkt, ut fra corner_recommendations,
+ * bløtt utjevnet mot naboene slik at dosering ramper inn/ut av svingen. */
+function computeBankDegrees(analysis, n, tangents) {
+  const bankDeg = new Array(n).fill(0);
+  for (const rec of analysis.corner_recommendations || []) {
+    const idx = rec.point_index;
+    if (idx <= 0 || idx >= n - 1) continue;
+    const tin = tangents[idx - 1];
+    const tout = tangents[Math.min(idx + 1, n - 1)];
+    const cross = tin.x * tout.z - tin.z * tout.x;
+    const sign = cross >= 0 ? 1 : -1;
+    const magnitude = Math.min(Math.abs(rec.recommended_bank_deg), MAX_VISUAL_BANK_DEG);
+    for (let off = -2; off <= 2; off++) {
+      const j = idx + off;
+      if (j < 0 || j >= n) continue;
+      const weight = Math.max(0, 1 - Math.abs(off) / 3);
+      const val = sign * magnitude * weight;
+      if (Math.abs(val) > Math.abs(bankDeg[j])) bankDeg[j] = val;
+    }
+  }
+  return bankDeg;
+}
+
+/** Bygger stien som et bånd med reell bredde: fysisk dosert i svinger, og med
+ * stiliserte hopp-ramper (opptak -> gap -> landing) ved hopplinje-mulighetene. */
+function buildTrailRibbon(analysis, minElev, exaggeration) {
+  const DIRT_COLOR = new THREE.Color(0x8d6e4a);
+  const JUMP_COLOR = new THREE.Color(0x8e24aa);
   const waypoints = analysis.waypoints;
-  const heightBias = 1.0 * exaggeration;
+  const n = waypoints.length;
 
-  for (const seg of analysis.segments) {
-    const wpStart = waypoints[seg.index];
-    const wpEnd = waypoints[seg.index + 1];
-    const sev = segmentSeverity(seg.flags);
-    const color = new THREE.Color(severityColor(sev));
+  const positions = waypoints.map((w) => ({
+    x: w.x_m,
+    y: (w.elevation_m - minElev) * exaggeration,
+    z: w.y_m,
+  }));
+  const tangents = computeTangents(positions);
+  const bankDeg = computeBankDegrees(analysis, n, tangents);
 
-    const points = [
-      new THREE.Vector3(wpStart.x_m, (wpStart.elevation_m - minElev) * exaggeration + heightBias, wpStart.y_m),
-      new THREE.Vector3(wpEnd.x_m, (wpEnd.elevation_m - minElev) * exaggeration + heightBias, wpEnd.y_m),
-    ];
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color, linewidth: 3 });
-    group.add(new THREE.Line(geometry, material));
+  function makeNode(pos, tangent, bankDegVal, color) {
+    const nx = -tangent.z;
+    const nz = tangent.x;
+    const yOff = TRAIL_HALF_WIDTH_M * Math.tan((bankDegVal * Math.PI) / 180);
+    return {
+      left: new THREE.Vector3(
+        pos.x + nx * TRAIL_HALF_WIDTH_M,
+        pos.y - yOff,
+        pos.z + nz * TRAIL_HALF_WIDTH_M
+      ),
+      right: new THREE.Vector3(
+        pos.x - nx * TRAIL_HALF_WIDTH_M,
+        pos.y + yOff,
+        pos.z - nz * TRAIL_HALF_WIDTH_M
+      ),
+      color,
+    };
   }
 
+  const jumpZoneByStart = new Map();
+  for (const jump of analysis.jump_opportunities || []) {
+    jumpZoneByStart.set(jump.start_index, jump);
+  }
+
+  const lipHeight = JUMP_LIP_HEIGHT_M * exaggeration;
+  const nodes = []; // null = "gap" (ingen flate - syklisten er i luften her)
+  let i = 0;
+  while (i < n) {
+    const jump = jumpZoneByStart.get(i);
+    if (jump && jump.end_index > i) {
+      const endIdx = Math.min(jump.end_index, n - 1);
+      const startPos = positions[i];
+      const endPos = positions[endIdx];
+      const tangent = tangents[i];
+      const SUBDIVISIONS = 24;
+      for (let s = 0; s <= SUBDIVISIONS; s++) {
+        const t = s / SUBDIVISIONS;
+        if (t >= 0.2 && t < 0.35) {
+          nodes.push(null);
+          continue;
+        }
+        const interp = {
+          x: startPos.x + (endPos.x - startPos.x) * t,
+          y: startPos.y + (endPos.y - startPos.y) * t,
+          z: startPos.z + (endPos.z - startPos.z) * t,
+        };
+        if (t < 0.2) interp.y += lipHeight * (t / 0.2);
+        nodes.push(makeNode(interp, tangent, 0, JUMP_COLOR));
+      }
+      i = endIdx + 1;
+    } else {
+      const seg = analysis.segments[i];
+      const color =
+        seg && seg.flags.length ? new THREE.Color(severityColor(segmentSeverity(seg.flags))) : DIRT_COLOR;
+      nodes.push(makeNode(positions[i], tangents[i], bankDeg[i], color));
+      i++;
+    }
+  }
+
+  const positionsArr = [];
+  const colorsArr = [];
+  for (let k = 0; k < nodes.length - 1; k++) {
+    const a = nodes[k];
+    const b = nodes[k + 1];
+    if (!a || !b) continue; // hopp over "gap"-partier i hopplinjene
+
+    positionsArr.push(a.left.x, a.left.y, a.left.z, a.right.x, a.right.y, a.right.z, b.left.x, b.left.y, b.left.z);
+    positionsArr.push(b.left.x, b.left.y, b.left.z, a.right.x, a.right.y, a.right.z, b.right.x, b.right.y, b.right.z);
+
+    for (const c of [a.color, a.color, b.color, b.color, a.color, b.color]) {
+      colorsArr.push(c.r, c.g, c.b);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positionsArr, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colorsArr, 3));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.9,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  });
+
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(geometry, material));
+
   // Start-/sluttmarkører
-  const markerGeom = new THREE.SphereGeometry(Math.max(1, heightBias * 1.5), 12, 12);
+  const markerGeom = new THREE.SphereGeometry(Math.max(0.8, TRAIL_HALF_WIDTH_M * 1.5), 12, 12);
   const startMarker = new THREE.Mesh(markerGeom, new THREE.MeshStandardMaterial({ color: 0x2f6b4f }));
-  const first = waypoints[0];
-  startMarker.position.set(first.x_m, (first.elevation_m - minElev) * exaggeration + heightBias, first.y_m);
+  const first = positions[0];
+  startMarker.position.set(first.x, first.y + 0.5 * exaggeration, first.z);
   group.add(startMarker);
 
   const endMarker = new THREE.Mesh(markerGeom, new THREE.MeshStandardMaterial({ color: 0xc62828 }));
-  const last = waypoints[waypoints.length - 1];
-  endMarker.position.set(last.x_m, (last.elevation_m - minElev) * exaggeration + heightBias, last.y_m);
+  const last = positions[n - 1];
+  endMarker.position.set(last.x, last.y + 0.5 * exaggeration, last.z);
   group.add(endMarker);
 
   return group;
@@ -742,7 +869,7 @@ function renderThreeScene(grid, analysis, exaggeration) {
 
   const { mesh, minElev } = buildTerrainMesh(grid, exaggeration);
   threeScene.add(mesh);
-  threeScene.add(buildTrailLines(analysis, minElev, exaggeration));
+  threeScene.add(buildTrailRibbon(analysis, minElev, exaggeration));
 
   const terrainWidth = grid.cols * grid.cell_size_x_m;
   const terrainDepth = grid.rows * grid.cell_size_y_m;

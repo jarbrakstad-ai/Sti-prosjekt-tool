@@ -129,17 +129,32 @@ bytter maskin eller sletter nettleserdata.
 ### 4. 3D-visning av trasé og terreng
 
 Etter en vellykket analyse/forslag kan du trykke **"🏔️ Vis trasé i 3D"** for
-å åpne en interaktiv 3D-visning (Three.js) av terrenget med traséen tegnet
-oppå, fargekodet likt som 2D-kartet (grønn/gul/rød etter alvorlighetsgrad på
-funn). Dra for å rotere, scroll for å zoome, og juster
-"Høyde-overdrivelse"-glideren for å gjøre terrengformen tydeligere (terreng
-ser ofte flatere ut enn det er ved 1:1-skala).
+å åpne en interaktiv 3D-visning (Three.js) av terrenget med traséen modellert
+oppå – ikke bare som en tynn strek, men som et fysisk sti-bånd:
+
+- **Reell bredde** (~1,2 m, typisk singletrack), fargekodet likt som
+  2D-kartet (jordfarge for funn-frie partier, gul/rød ved funn).
+- **Fysisk dosering i svinger**: der backend har beregnet en anbefalt
+  berm-vinkel (se "Svinger – dosering" i analysen), helles sti-båndets
+  tverrsnitt faktisk i 3D, med jevn opp-/nedramping inn og ut av svingen.
+- **Stiliserte hopp-ramper**: ved hopplinje-mulighetene bygges en
+  opptaksrampe (kicker) som løfter seg over terrenget, en luft-gap, og en
+  landing som fortsetter ned den naturlige nedoverbakken.
+
+Dra for å rotere, scroll for å zoome, og juster "Høyde-overdrivelse"-glideren
+for å gjøre terrengformen tydeligere. Dette er en **stilisert visualisering**
+av hvordan traséen kan se ut – ikke en presis fysisk simulering (spesielt
+hopp-rampene er en forenklet representasjon, siden verktøyet ikke beregner
+faktisk sprangvidde/trajectory).
 
 Teknisk: et nytt endepunkt (`POST /api/dem/terrain-grid`) returnerer et
 nedskalert høydegitter for den samme DEM-filen, i det samme lokale
 koordinatsystemet (meter fra DEM-ens hjørne) som trasépunktenes `x_m`/`y_m`
 i analyse-responsen – slik at terreng og trasé alltid stemmer geometrisk
-overens, selv om de hentes i separate kall.
+overens, selv om de hentes i separate kall. Selve sti-båndet (bredde,
+dosering, hopp-ramper) bygges helt i frontend (`buildTrailRibbon` i
+`frontend/app.js`), siden all nødvendig geometri (posisjon, doserings-vinkel,
+hopp-indekser) allerede følger med i analyse-responsen.
 
 ## Driftsatt frontend (GitHub Pages)
 
