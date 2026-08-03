@@ -25,11 +25,30 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 window.addEventListener("resize", () => map.invalidateSize());
 window.addEventListener("orientationchange", () => setTimeout(() => map.invalidateSize(), 200));
 
-const trailLayer = L.layerGroup().addTo(map);
+// Egne lag per informasjonstype, slik at de kan skrus av/på uavhengig
+// (se "Vis i kart"-panelet) i stedet for å presse alt oppå hverandre.
+const trailLineLayer = L.layerGroup().addTo(map);
+const trailLabelLayer = L.layerGroup(); // av som standard - kan bli tett ved mange segmenter
 const markerLayer = L.layerGroup().addTo(map);
-const waypointLayer = L.layerGroup().addTo(map);
+const waypointLayer = L.layerGroup(); // av som standard
 const jumpLayer = L.layerGroup().addTo(map);
 const cornerLayer = L.layerGroup().addTo(map);
+
+const LAYER_BY_CHECKBOX = {
+  "layer-trail-lines": trailLineLayer,
+  "layer-segment-labels": trailLabelLayer,
+  "layer-waypoints": waypointLayer,
+  "layer-jumps": jumpLayer,
+  "layer-corners": cornerLayer,
+};
+
+for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
+  const checkbox = document.getElementById(checkboxId);
+  checkbox.addEventListener("change", () => {
+    if (checkbox.checked) map.addLayer(layer);
+    else map.removeLayer(layer);
+  });
+}
 
 function segmentSeverity(flags) {
   if (flags.some((f) => BAD_FLAGS.has(f))) return "bad";
@@ -46,7 +65,8 @@ function segmentMidpoint(seg) {
 }
 
 function renderMap(segments) {
-  trailLayer.clearLayers();
+  trailLineLayer.clearLayers();
+  trailLabelLayer.clearLayers();
   const bounds = [];
   for (const seg of segments) {
     const sev = segmentSeverity(seg.flags);
@@ -56,7 +76,7 @@ function renderMap(segments) {
       `Segment ${seg.index}: ${seg.length_m} m, helning ${seg.grade_pct}%` +
       (seg.flags.length ? `<br>${seg.flags.map((f) => FLAG_LABELS[f] || f).join("<br>")}` : "<br>Ingen funn");
 
-    L.polyline(latlngs, { color, weight: 5 }).addTo(trailLayer).bindPopup(popupHtml);
+    L.polyline(latlngs, { color, weight: 5 }).addTo(trailLineLayer).bindPopup(popupHtml);
 
     L.marker(segmentMidpoint(seg), {
       icon: L.divIcon({
@@ -66,7 +86,7 @@ function renderMap(segments) {
       }),
       interactive: true,
     })
-      .addTo(trailLayer)
+      .addTo(trailLabelLayer)
       .bindPopup(popupHtml);
 
     bounds.push(latlngs[0], latlngs[1]);
@@ -292,7 +312,8 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     setStatus("");
     document.getElementById("report").innerHTML = "";
     document.getElementById("download-buttons").hidden = true;
-    trailLayer.clearLayers();
+    trailLineLayer.clearLayers();
+    trailLabelLayer.clearLayers();
     markerLayer.clearLayers();
     waypointLayer.clearLayers();
     jumpLayer.clearLayers();
