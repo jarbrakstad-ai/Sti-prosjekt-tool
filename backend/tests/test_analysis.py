@@ -122,6 +122,39 @@ def test_requires_at_least_two_points():
         analyze_trail(points_from_xy([(500100, 6600050)]), dem, Thresholds())
 
 
+def test_no_corner_recommendation_on_straight_fall_line_trail():
+    dem = make_tilted_plane_dem()
+    pts = points_from_xy([(500100, y) for y in range(6600080, 6600010, -20)])
+    result = analyze_trail(pts, dem, Thresholds())
+    assert result["corner_recommendations"] == []
+
+
+def test_corner_recommendation_for_right_angle_turn_on_flat_terrain():
+    dem = make_tilted_plane_dem(grade=0.0)
+    pts = points_from_xy([(500100, 6600080), (500100, 6600060), (500120, 6600060)])
+    result = analyze_trail(pts, dem, Thresholds())
+
+    recs = result["corner_recommendations"]
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec["turn_angle_deg"] == pytest.approx(90.0, abs=0.5)
+    assert rec["estimated_radius_m"] == pytest.approx(12.73, abs=0.2)
+    assert rec["recommended_bank_deg"] == pytest.approx(13.9, abs=0.5)
+    assert rec["flags"] == []
+
+
+def test_corner_recommendation_higher_bank_on_descending_terrain():
+    flat_dem = make_tilted_plane_dem(grade=0.0)
+    descending_dem = make_tilted_plane_dem(grade=0.15)
+    pts = points_from_xy([(500100, 6600080), (500100, 6600060), (500120, 6600060)])
+
+    flat_rec = analyze_trail(pts, flat_dem, Thresholds())["corner_recommendations"][0]
+    descending_rec = analyze_trail(pts, descending_dem, Thresholds())["corner_recommendations"][0]
+
+    assert descending_rec["recommended_bank_deg"] > flat_rec["recommended_bank_deg"]
+    assert descending_rec["recommended_bank_deg"] == pytest.approx(18.1, abs=0.5)
+
+
 def test_jump_opportunity_found_on_consistent_moderate_descent():
     dem = make_tilted_plane_dem(grade=0.15)  # jevn 15% nedoverbakke, rett fallinje
     pts = points_from_xy([(500100, y) for y in range(6600080, 6600010, -20)])

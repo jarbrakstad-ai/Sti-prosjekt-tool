@@ -47,9 +47,21 @@ class JumpOpportunity(BaseModel):
     note: str
 
 
+class CornerRecommendation(BaseModel):
+    point_index: int
+    location: tuple[float, float]
+    turn_angle_deg: float
+    estimated_radius_m: float
+    assumed_speed_kmh: float
+    recommended_bank_deg: float
+    flags: list[str]
+    note: str
+
+
 class AnalyzeResponse(BaseModel):
     summary: Summary
     recommendations: list[str]
     jump_opportunities: list[JumpOpportunity]
+    corner_recommendations: list[CornerRecommendation]
     waypoints: list[Waypoint]
     segments: list[Segment]

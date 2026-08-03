@@ -188,6 +188,13 @@ main {
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--bad); }
 .dot.jump { background: #8e24aa; }
+.dot.corner { background: #00838f; }
+
+.leaflet-tooltip.leaflet-tooltip-top {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+}
 
 #report { font-size: 0.85rem; }
 #report h2 { font-size: 1rem; margin-bottom: 0.25rem; }

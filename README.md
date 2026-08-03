@@ -59,6 +59,16 @@ segment og samlet:
   kartet og listes i rapporten; må detaljprosjekteres og kontrolleres i felt
   av kompetent hopplinje-/stibygger før bygging. Terskler kan justeres i
   `backend/app/jump_features.py`.
+- **Svinger – dosering (berm)**: for hver sving skarpere enn en vinkelterskel
+  anslås svingradius (fra punktgeometrien) og en anbefalt doseringsvinkel,
+  basert på en antatt hastighet (justert noe opp for lokalt fallende terreng
+  rundt svingen). Målet er jevn flyt gjennom svingen uten hard sidekraft eller
+  behov for kraftig oppbremsing. Dette er en grov fysisk/geometrisk heuristikk
+  (ikke en kjøredynamikk-simulering) – faktisk komfortabel dosering avhenger
+  også av underlag, sikt og syklistens erfaring. Markeres som fargede punkter
+  i kartet med anbefalt gradtall (turkis = normalt, rødt = vurder heller
+  større svingradius enn enda brattere berm). Terskler/antatt fart kan
+  justeres i `backend/app/corner_features.py`.
 
 Både denne modusen og trasé-forslag under viser en **liste over GPS-punkter**
 (lat/lon, høyde, avstand fra start) for hvert punkt langs traséen – i en
@@ -134,6 +144,7 @@ backend/    FastAPI-tjeneste som gjør selve geodata-analysen
     terrain_metrics.py   Delt vektorgeometri (sidehelling, fall-line-vinkel)
     analysis.py          Vurder gitt trasé: half-rule, helning, reversals
     jump_features.py      Finner mulige hopplinje-partier (jevn nedoverbakke)
+    corner_features.py    Anbefaler dosering (berm) for skarpe svinger
     routing.py           Foreslå ny trasé: A*-søk med samme kostnadsprinsipper
     schemas.py           Pydantic-modeller for /api/analyze-respons
   tests/

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from pyproj import Transformer
 
+from .corner_features import CornerCriteria, find_corner_recommendations
 from .dem import DemSampler
 from .gpx_io import TrailPoint
 from .jump_features import JumpCriteria, find_jump_opportunities
@@ -92,12 +93,14 @@ def analyze_trail(
     dem: DemSampler,
     thresholds: Thresholds | None = None,
     jump_criteria: JumpCriteria | None = None,
+    corner_criteria: CornerCriteria | None = None,
 ) -> dict:
     if len(points) < 2:
         raise ValueError("Traséen må ha minst 2 punkter.")
 
     t = thresholds or Thresholds()
     jc = jump_criteria or JumpCriteria()
+    cc = corner_criteria or CornerCriteria()
 
     xs, ys = _project_points(points, dem.crs)
     dem_elevations = dem.sample_elevation(xs, ys)
@@ -221,6 +224,9 @@ def analyze_trail(
     jump_opportunities = find_jump_opportunities(
         points, grade_pct, cross_slope_pct, seg_len, cum_dist, jc
     )
+    corner_recommendations = find_corner_recommendations(
+        points, ux, uy, seg_len, grade_pct, cc
+    )
 
     return {
         "summary": {
@@ -236,6 +242,7 @@ def analyze_trail(
         },
         "recommendations": recommendations,
         "jump_opportunities": jump_opportunities,
+        "corner_recommendations": corner_recommendations,
         "waypoints": [
             {
                 "index": i,

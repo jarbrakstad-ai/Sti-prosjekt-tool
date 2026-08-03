@@ -29,6 +29,7 @@ const trailLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup().addTo(map);
 const jumpLayer = L.layerGroup().addTo(map);
+const cornerLayer = L.layerGroup().addTo(map);
 
 function segmentSeverity(flags) {
   if (flags.some((f) => BAD_FLAGS.has(f))) return "bad";
@@ -156,6 +157,51 @@ function renderJumpOpportunitiesSection(jumpOpportunities) {
   `;
 }
 
+function renderCornerRecommendations(cornerRecommendations) {
+  cornerLayer.clearLayers();
+  for (const rec of cornerRecommendations || []) {
+    const color = rec.flags.includes("bank_angle_high") ? "#c62828" : "#00838f";
+    L.circleMarker(rec.location, {
+      radius: 7,
+      color,
+      fillColor: color,
+      fillOpacity: 0.9,
+      weight: 2,
+    })
+      .addTo(cornerLayer)
+      .bindTooltip(`${rec.recommended_bank_deg}°`, { permanent: true, direction: "top", offset: [0, -8] })
+      .bindPopup(
+        `<strong>Sving – dosering</strong><br>Svingvinkel ~${rec.turn_angle_deg}°, anslått radius ${rec.estimated_radius_m} m` +
+          `<br>Antatt fart ~${rec.assumed_speed_kmh} km/t<br>Anbefalt dosering: <strong>${rec.recommended_bank_deg}°</strong>` +
+          `<br>${rec.note}`
+      );
+  }
+}
+
+function renderCornerRecommendationsSection(cornerRecommendations) {
+  if (!cornerRecommendations || cornerRecommendations.length === 0) {
+    return `
+      <h2>Svinger – dosering</h2>
+      <p class="hint">Ingen svinger skarpere enn terskelen ble funnet.</p>
+    `;
+  }
+  const items = cornerRecommendations
+    .map(
+      (rec) =>
+        `<li>Svingvinkel ~${rec.turn_angle_deg}°, radius ${rec.estimated_radius_m} m – anbefalt dosering ` +
+        `<strong>${rec.recommended_bank_deg}°</strong> (antatt fart ~${rec.assumed_speed_kmh} km/t)` +
+        `${rec.flags.includes("bank_angle_high") ? " ⚠️ vurder større svingradius" : ""}</li>`
+    )
+    .join("");
+  return `
+    <h2>Svinger – dosering (${cornerRecommendations.length})</h2>
+    <p class="hint">Grov heuristikk basert på svingradius og antatt fart – markert som fargede punkter i kartet
+    (turkis = normal, rød = vurder større radius). Faktisk komfortabel dosering avhenger av underlag og
+    syklistens erfaring – bruk som utgangspunkt, ikke fasit.</p>
+    <ul>${items}</ul>
+  `;
+}
+
 function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
@@ -173,10 +219,12 @@ function renderReport(result, { suggested } = {}) {
     <h2>Anbefalinger</h2>
     <ul>${result.recommendations.map((r) => `<li>${r}</li>`).join("")}</ul>
     ${renderJumpOpportunitiesSection(result.jump_opportunities)}
+    ${renderCornerRecommendationsSection(result.corner_recommendations)}
     ${renderWaypointsTable(result.waypoints)}
   `;
   renderWaypointMarkers(result.waypoints);
   renderJumpOpportunities(result.jump_opportunities);
+  renderCornerRecommendations(result.corner_recommendations);
 }
 
 function setStatus(message, isError = false) {
@@ -248,6 +296,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     markerLayer.clearLayers();
     waypointLayer.clearLayers();
     jumpLayer.clearLayers();
+    cornerLayer.clearLayers();
   });
 });
 
