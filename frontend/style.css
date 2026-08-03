@@ -1,0 +1,101 @@
+:root {
+  color-scheme: light dark;
+  --ok: #2e7d32;
+  --warn: #f9a825;
+  --bad: #c62828;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+header {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+header h1 { margin: 0 0 0.25rem 0; font-size: 1.25rem; }
+header p { margin: 0; opacity: 0.8; font-size: 0.9rem; }
+
+main {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#controls {
+  width: 380px;
+  flex-shrink: 0;
+  padding: 1rem;
+  overflow-y: auto;
+  border-right: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+#analyze-form label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+#analyze-form input[type="file"],
+#analyze-form input[type="text"] {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+#analyze-form button {
+  width: 100%;
+  padding: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#status { margin: 0.75rem 0; font-size: 0.9rem; }
+#status.error { color: var(--bad); }
+
+#map-section {
+  flex: 1;
+  position: relative;
+}
+
+#map { position: absolute; inset: 0; }
+
+#legend {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.9);
+  color: #111;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 0.5rem;
+}
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
+#report { font-size: 0.85rem; }
+#report h2 { font-size: 1rem; margin-bottom: 0.25rem; }
+#report table { width: 100%; border-collapse: collapse; margin-bottom: 0.75rem; }
+#report td, #report th { padding: 0.15rem 0.3rem; text-align: left; border-bottom: 1px solid rgba(128,128,128,0.2); }
+#report ul { padding-left: 1.1rem; }
+#report li { margin-bottom: 0.35rem; }

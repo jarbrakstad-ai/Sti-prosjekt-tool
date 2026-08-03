@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sti-prosjekt-tool</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Sti-prosjekt-tool</h1>
+    <p>Analyser en sykkelsti/flytsti-trasé opp mot beste praksis for bærekraftig stibygging.</p>
+  </header>
+
+  <main>
+    <section id="controls">
+      <form id="analyze-form">
+        <label>
+          Trasé (GPX eller GeoJSON)
+          <input type="file" id="trail-file" accept=".gpx,.json,.geojson" required />
+        </label>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter)
+          <input type="file" id="dem-file" accept=".tif,.tiff" required />
+        </label>
+        <label>
+          API-adresse
+          <input type="text" id="api-base" value="http://localhost:8000" />
+        </label>
+        <button type="submit">Analyser</button>
+      </form>
+      <div id="status"></div>
+      <div id="report"></div>
+    </section>
+
+    <section id="map-section">
+      <div id="map"></div>
+      <div id="legend">
+        <span class="dot ok"></span> Ingen funn
+        <span class="dot warn"></span> Moderat funn
+        <span class="dot bad"></span> Alvorlig funn (half-rule / fall-line høy risiko / for bratt)
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
