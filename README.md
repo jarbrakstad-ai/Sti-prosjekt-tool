@@ -138,6 +138,32 @@ Kjører backend lokalt på `http://localhost:8000`, fungerer det fint å peke di
 selv fra en `https://`-side, siden nettlesere regner `localhost` som en
 "trygg" opprinnelse.
 
+## Driftsatt backend (Render.com, gratis)
+
+Repoet inneholder en `render.yaml` ("Blueprint") som lar Render sette opp
+backend-tjenesten automatisk:
+
+1. Opprett en konto på [render.com](https://render.com) (gratis, ingen
+   kredittkort normalt nødvendig for gratis-tier – sjekk gjeldende vilkår).
+2. Dashboard → **New** → **Blueprint**.
+3. Koble til GitHub og velg dette repoet
+   (`jarbrakstad-ai/Sti-prosjekt-tool`), grenen
+   `claude/stisykling-trail-analysis-tool-gik9ya` (eller `main` når/hvis
+   endringene er merget dit).
+4. Render leser `render.yaml` og foreslår én tjeneste
+   (`sti-prosjekt-tool-api`, gratis-plan) – trykk **Apply**/**Create**.
+5. Vent til build/deploy er ferdig (kan ta noen minutter første gang), og
+   kopier URL-en Render gir deg (noe sånt som
+   `https://sti-prosjekt-tool-api.onrender.com`).
+6. Lim inn URL-en i **"API-adresse"**-feltet på
+   https://jarbrakstad-ai.github.io/Sti-prosjekt-tool/ – da fungerer siden
+   helt uten noe lokalt.
+
+**Verdt å vite om gratis-tieren på Render:** tjenesten "sovner" etter ca.
+15 minutter uten trafikk, og det første kallet etterpå kan ta 30–60
+sekunder mens den våkner igjen (påfølgende kall er raske). Dette er en
+begrensning i gratis-tieren, ikke en feil i appen.
+
 Første gang: workflowen krever at **GitHub Pages er skrudd på i repoet**
 (Settings → Pages → "Build and deployment" → Source: **GitHub Actions**).
 Dette er en engangs-innstilling som må gjøres av en med admin-tilgang til
