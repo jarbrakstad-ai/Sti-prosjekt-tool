@@ -42,7 +42,7 @@ def test_flat_dem_route_is_direct_and_clean():
     start = latlon_for_rowcol(dem, 5, 5)
     end = latlon_for_rowcol(dem, 5, 30)
 
-    result = suggest_route(dem, start, end, RouteOptions())
+    result = suggest_route(dem, [start, end], RouteOptions())
 
     assert result["analysis"]["summary"]["max_grade_pct"] < 1.0
     assert len(result["points"]) >= 2
@@ -55,7 +55,7 @@ def test_route_detours_around_steep_wall_instead_of_crossing_it():
     start = latlon_for_rowcol(dem, 2, 2)
     end = latlon_for_rowcol(dem, 2, 37)
 
-    result = suggest_route(dem, start, end, RouteOptions())
+    result = suggest_route(dem, [start, end], RouteOptions())
 
     to_dem = Transformer.from_crs("EPSG:4326", UTM, always_xy=True)
     wall_crossings = []
@@ -80,14 +80,14 @@ def test_raises_when_grid_too_large():
     start = latlon_for_rowcol(dem, 5, 5)
     end = latlon_for_rowcol(dem, 5, 30)
     with pytest.raises(RoutingError):
-        suggest_route(dem, start, end, RouteOptions(max_grid_nodes=100))
+        suggest_route(dem, [start, end], RouteOptions(max_grid_nodes=100))
 
 
 def test_raises_when_start_and_end_same_cell():
     dem = make_flat_dem()
     start = latlon_for_rowcol(dem, 5, 5)
     with pytest.raises(RoutingError):
-        suggest_route(dem, start, start, RouteOptions())
+        suggest_route(dem, [start, start], RouteOptions())
 
 
 def test_raises_when_start_point_outside_dem_instead_of_silently_clamping():
@@ -101,7 +101,7 @@ def test_raises_when_start_point_outside_dem_instead_of_silently_clamping():
     end = latlon_for_rowcol(dem, 20, 20)
 
     with pytest.raises(RoutingError, match="utenfor DEM-området"):
-        suggest_route(dem, start, end, RouteOptions())
+        suggest_route(dem, [start, end], RouteOptions())
 
 
 def test_raises_when_end_point_outside_dem():
@@ -112,4 +112,31 @@ def test_raises_when_end_point_outside_dem():
     end = (float(lat), float(lon))
 
     with pytest.raises(RoutingError, match="utenfor DEM-området"):
-        suggest_route(dem, start, end, RouteOptions())
+        suggest_route(dem, [start, end], RouteOptions())
+
+
+def test_route_passes_through_via_point_and_smoothing_does_not_move_it():
+    """Mellompunkt (f.eks. for å styre unna en grunneiers areal) skal alltid
+    ligge på ruten, uendret av glattingen som ellers kutter hjørner."""
+    dem = make_flat_dem()
+    start = latlon_for_rowcol(dem, 5, 5)
+    via = latlon_for_rowcol(dem, 30, 10)
+    end = latlon_for_rowcol(dem, 5, 30)
+
+    result = suggest_route(dem, [start, via, end], RouteOptions())
+
+    assert result["search_stats"]["num_legs"] == 2
+
+    to_dem = Transformer.from_crs("EPSG:4326", UTM, always_xy=True)
+    via_x, via_y = to_dem.transform(via[1], via[0])
+    via_row, via_col = dem.xy_to_nearest_rowcol(via_x, via_y)
+
+    hit = False
+    for lat, lon in result["points"]:
+        x, y = to_dem.transform(lon, lat)
+        row, col = dem.xy_to_nearest_rowcol(x, y)
+        if row == via_row and col == via_col:
+            hit = True
+            break
+
+    assert hit, "forventet at ruten faktisk går gjennom mellompunktet"

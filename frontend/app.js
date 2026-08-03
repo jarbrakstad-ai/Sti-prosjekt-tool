@@ -375,8 +375,9 @@ analyzeForm.addEventListener("submit", async (e) => {
 });
 
 // ---- Foreslå trasé ----
-let pickedStart = null;
-let pickedEnd = null;
+// Rekkefølge av klikk: routeWaypoints[0] = start, routeWaypoints[last] = slutt,
+// alt i mellom er faste mellompunkt (f.eks. for å styre unna en grunneiers areal).
+let routeWaypoints = [];
 let lastExportData = null;
 
 function triggerDownload(filename, content, mimeType) {
@@ -537,32 +538,51 @@ document.getElementById("save-alternative-btn").addEventListener("click", () => 
 renderCompareTable();
 renderCompareLayer();
 
+function pointLabel(i, total) {
+  if (i === 0) return "Start";
+  if (i === total - 1) return "Slutt";
+  return `Mellompunkt ${i}`;
+}
+
+function renderRouteWaypointMarkers() {
+  markerLayer.clearLayers();
+  const total = routeWaypoints.length;
+  routeWaypoints.forEach((p, i) => {
+    const label = pointLabel(i, total);
+    L.marker(p, { title: label }).addTo(markerLayer).bindPopup(label);
+  });
+}
+
 function updatePickedPointsLabel() {
-  const fmt = (p) => (p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "–");
-  document.getElementById("picked-points").textContent =
-    `Start: ${fmt(pickedStart)}   Slutt: ${fmt(pickedEnd)}`;
+  const el = document.getElementById("picked-points");
+  if (routeWaypoints.length === 0) {
+    el.textContent = "Start: –   Slutt: –";
+    return;
+  }
+  const total = routeWaypoints.length;
+  el.textContent = routeWaypoints
+    .map((p, i) => `${pointLabel(i, total)}: ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`)
+    .join("   ");
 }
 
 map.on("click", (e) => {
   const isSuggestMode = document.querySelector('input[name="mode"]:checked').value === "suggest";
   if (!isSuggestMode) return;
 
-  markerLayer.clearLayers();
-  if (!pickedStart || (pickedStart && pickedEnd)) {
-    pickedStart = e.latlng;
-    pickedEnd = null;
-  } else {
-    pickedEnd = e.latlng;
-  }
-  if (pickedStart) L.marker(pickedStart, { title: "Start" }).addTo(markerLayer).bindPopup("Start");
-  if (pickedEnd) L.marker(pickedEnd, { title: "Slutt" }).addTo(markerLayer).bindPopup("Slutt");
+  routeWaypoints.push(e.latlng);
+  renderRouteWaypointMarkers();
   updatePickedPointsLabel();
 });
 
 document.getElementById("reset-points").addEventListener("click", () => {
-  pickedStart = null;
-  pickedEnd = null;
+  routeWaypoints = [];
   markerLayer.clearLayers();
+  updatePickedPointsLabel();
+});
+
+document.getElementById("undo-point").addEventListener("click", () => {
+  routeWaypoints.pop();
+  renderRouteWaypointMarkers();
   updatePickedPointsLabel();
 });
 
@@ -577,17 +597,14 @@ suggestForm.addEventListener("submit", async (e) => {
     setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
     return;
   }
-  if (!pickedStart || !pickedEnd) {
-    setStatus("Klikk et start- og et sluttpunkt i kartet først.", true);
+  if (routeWaypoints.length < 2) {
+    setStatus("Klikk minst et start- og et sluttpunkt i kartet først (og ev. mellompunkt mellom dem).", true);
     return;
   }
 
   const formData = new FormData();
   formData.append("dem", dem.blob, dem.filename);
-  formData.append("start_lat", pickedStart.lat);
-  formData.append("start_lon", pickedStart.lng);
-  formData.append("end_lat", pickedEnd.lat);
-  formData.append("end_lon", pickedEnd.lng);
+  formData.append("waypoints_json", JSON.stringify(routeWaypoints.map((p) => [p.lat, p.lng])));
   formData.append("trail_type", trailType);
   formData.append("target_grade_pct", targetGrade);
 

@@ -236,11 +236,19 @@ def _chaikin_smooth(
 
 def suggest_route(
     dem: DemSampler,
-    start_latlon: tuple[float, float],
-    end_latlon: tuple[float, float],
+    waypoints_latlon: list[tuple[float, float]],
     options: RouteOptions | None = None,
 ) -> dict:
+    """Foreslår en trasé gjennom en rekkefølge av punkter: `waypoints_latlon[0]`
+    er startpunkt, `waypoints_latlon[-1]` er sluttpunkt, og eventuelle punkter
+    i mellom er faste mellompunkter ruten *skal* gå gjennom (f.eks. for å styre
+    linjeføringen unna et areal, eller innenfor en bestemt grunneiers eiendom).
+    A* kjøres separat for hvert delstrekk (mellom to påfølgende punkter) og
+    settes sammen til én sammenhengende trasé."""
     opt = options or RouteOptions()
+
+    if len(waypoints_latlon) < 2:
+        raise RoutingError("Trenger minst et startpunkt og et sluttpunkt.")
 
     n_rows, n_cols = dem.shape()
     if n_rows * n_cols > opt.max_grid_nodes:
@@ -253,39 +261,65 @@ def suggest_route(
     to_dem = Transformer.from_crs("EPSG:4326", dem.crs, always_xy=True)
     to_wgs84 = Transformer.from_crs(dem.crs, "EPSG:4326", always_xy=True)
 
-    start_x, start_y = to_dem.transform(start_latlon[1], start_latlon[0])
-    end_x, end_y = to_dem.transform(end_latlon[1], end_latlon[0])
+    rc_points: list[tuple[int, int]] = []
+    for i, (lat, lon) in enumerate(waypoints_latlon):
+        x, y = to_dem.transform(lon, lat)
+        try:
+            rc_points.append(dem.xy_to_nearest_rowcol(x, y))
+        except DemError as exc:
+            if i == 0:
+                label = "Startpunktet"
+            elif i == len(waypoints_latlon) - 1:
+                label = "Sluttpunktet"
+            else:
+                label = f"Mellompunkt {i}"
+            raise RoutingError(f"{label} ligger utenfor DEM-området: {exc}") from exc
 
-    try:
-        start_rc = dem.xy_to_nearest_rowcol(start_x, start_y)
-    except DemError as exc:
-        raise RoutingError(f"Startpunktet ligger utenfor DEM-området: {exc}") from exc
-    try:
-        end_rc = dem.xy_to_nearest_rowcol(end_x, end_y)
-    except DemError as exc:
-        raise RoutingError(f"Sluttpunktet ligger utenfor DEM-området: {exc}") from exc
-
-    if start_rc == end_rc:
-        raise RoutingError("Start- og sluttpunkt havner i samme DEM-celle. Velg punkter lenger fra hverandre.")
-
-    path_rc = _astar(dem, start_rc, end_rc, opt)
-
-    rows = np.array([p[0] for p in path_rc])
-    cols = np.array([p[1] for p in path_rc])
-    xs_raw, ys_raw = dem.rowcol_to_xy(rows, cols)
+    for i in range(len(rc_points) - 1):
+        if rc_points[i] == rc_points[i + 1]:
+            raise RoutingError(
+                f"Punkt {i + 1} og {i + 2} havner i samme DEM-celle. Velg punkter lenger fra hverandre."
+            )
 
     def to_points(xs: np.ndarray, ys: np.ndarray) -> list[TrailPoint]:
         lons, lats = to_wgs84.transform(xs, ys)
         return [TrailPoint(lat=float(la), lon=float(lo)) for la, lo in zip(lats, lons)]
 
-    raw_points = to_points(xs_raw, ys_raw)
-    raw_analysis = analyze_trail(raw_points, dem, Thresholds())
+    raw_points_all: list[TrailPoint] = []
+    smooth_points_all: list[TrailPoint] = []
+    total_raw_nodes = 0
 
-    points, analysis, smoothed = raw_points, raw_analysis, False
+    for leg in range(len(rc_points) - 1):
+        leg_path_rc = _astar(dem, rc_points[leg], rc_points[leg + 1], opt)
+        total_raw_nodes += len(leg_path_rc)
+
+        rows = np.array([p[0] for p in leg_path_rc])
+        cols = np.array([p[1] for p in leg_path_rc])
+        xs_raw, ys_raw = dem.rowcol_to_xy(rows, cols)
+        leg_raw_points = to_points(xs_raw, ys_raw)
+
+        # Glatt hvert delstrekk for seg, med endepunktene (rutepunktene) låst
+        # fast - slik at obligatoriske mellompunkter aldri flyttes av glattingen.
+        if opt.smooth_iterations > 0:
+            xs_smooth, ys_smooth = _chaikin_smooth(xs_raw, ys_raw, opt.smooth_iterations, opt.smooth_ratio)
+            leg_smooth_points = to_points(xs_smooth, ys_smooth)
+        else:
+            leg_smooth_points = leg_raw_points
+
+        if leg == 0:
+            raw_points_all.extend(leg_raw_points)
+            smooth_points_all.extend(leg_smooth_points)
+        else:
+            # Hopp over første punkt i hvert nye delstrekk - det er identisk
+            # med forrige delstrekks siste punkt (rutepunktet de deler).
+            raw_points_all.extend(leg_raw_points[1:])
+            smooth_points_all.extend(leg_smooth_points[1:])
+
+    raw_analysis = analyze_trail(raw_points_all, dem, Thresholds())
+
+    points, analysis, smoothed = raw_points_all, raw_analysis, False
     if opt.smooth_iterations > 0:
-        xs_smooth, ys_smooth = _chaikin_smooth(xs_raw, ys_raw, opt.smooth_iterations, opt.smooth_ratio)
-        smooth_points = to_points(xs_smooth, ys_smooth)
-        smooth_analysis = analyze_trail(smooth_points, dem, Thresholds())
+        smooth_analysis = analyze_trail(smooth_points_all, dem, Thresholds())
 
         # Glatting er ren geometri og kjenner ikke til terrenget – den kan i
         # prinsippet kutte hjørner inn i terreng søket egentlig unngikk (f.eks.
@@ -293,7 +327,7 @@ def suggest_route(
         raw_max = raw_analysis["summary"]["max_grade_pct"]
         smooth_max = smooth_analysis["summary"]["max_grade_pct"]
         if smooth_max <= max(raw_max * 1.5, raw_max + 10.0, opt.max_grade_pct):
-            points, analysis, smoothed = smooth_points, smooth_analysis, True
+            points, analysis, smoothed = smooth_points_all, smooth_analysis, True
 
     lons = [p.lon for p in points]
     lats = [p.lat for p in points]
@@ -306,9 +340,10 @@ def suggest_route(
         "points": [[la, lo] for la, lo in zip(lats, lons)],
         "search_stats": {
             "grid_shape": [n_rows, n_cols],
-            "raw_path_nodes": len(path_rc),
+            "raw_path_nodes": total_raw_nodes,
             "final_points": len(points),
             "smoothed": smoothed,
+            "num_legs": len(rc_points) - 1,
         },
         "analysis": analysis,
     }

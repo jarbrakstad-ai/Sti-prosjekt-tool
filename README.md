@@ -77,12 +77,24 @@ koordinatene ut i felt for å gå opp/kontrollere linjen. Traséen kan også
 lastes ned direkte som **GPX** eller **GeoJSON** for bruk i en GPS-enhet
 eller turapp.
 
-### 2. Foreslå en ny trasé mellom to punkter
+### 2. Foreslå en ny trasé mellom to (eller flere) punkter
 
-Du laster opp en høydemodell og velger et start- og sluttpunkt (klikk i
-kartet, eller `start_lat/start_lon/end_lat/end_lon` mot API-et direkte).
-Verktøyet søker etter den linjen gjennom terrenget som gir lavest "kostnad",
-der kostnaden straffer:
+Du laster opp en høydemodell og velger et startpunkt og et sluttpunkt ved å
+klikke i kartet. Du kan også klikke inn ett eller flere **mellompunkt**
+mellom disse – nyttig for å styre hvilken retning traséen skal gå, f.eks. for
+å holde seg innenfor en bestemt grunneiers areal eller unngå et areal du ikke
+har avtale om. Klikkrekkefølgen blir rutepunktene i tur og orden (siste klikk
+er alltid sluttpunktet); bruk "Angre siste punkt" eller "Nullstill punkter"
+til å korrigere. Mot API-et sendes punktene som `waypoints_json`, en
+JSON-liste med `[lat, lon]`-par (minst 2 – start og slutt).
+
+Mellompunkt behandles som faste rutepunkt: A*-søket kjøres separat for hvert
+delstrekk mellom to påfølgende punkter, og hvert delstrekk glattes for seg –
+slik at et mellompunkt aldri flyttes av glattingen, uansett hvor mange
+mellompunkt du legger inn.
+
+Verktøyet søker etter den linjen gjennom terrenget som gir lavest "kostnad"
+for hvert delstrekk, der kostnaden straffer:
 
 - Avvik fra ønsket helning (flytsti: jevn helning rundt et mål, f.eks. 6 %;
   terrengsykkelsti: alt over maksgrensen straffes progressivt)

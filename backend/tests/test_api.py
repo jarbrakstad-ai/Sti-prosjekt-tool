@@ -1,6 +1,8 @@
 """Integrasjonstester av API-et med en ekte GeoTIFF (skrevet/lest via rasterio)."""
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import rasterio
 from affine import Affine
@@ -85,10 +87,7 @@ def test_suggest_endpoint_end_to_end(tmp_path):
         "/api/suggest",
         files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
         data={
-            "start_lat": start_lat,
-            "start_lon": start_lon,
-            "end_lat": end_lat,
-            "end_lon": end_lon,
+            "waypoints_json": json.dumps([[start_lat, start_lon], [end_lat, end_lon]]),
             "trail_type": "flow",
             "target_grade_pct": 6.0,
         },

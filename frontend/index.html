@@ -57,9 +57,12 @@
           <input type="file" id="suggest-dem-file" accept=".tif,.tiff" />
         </label>
         <p class="hint">
-          Klikk startpunkt, deretter sluttpunkt i kartet (innenfor DEM-området).
+          Klikk startpunkt i kartet, deretter ev. ett eller flere mellompunkt for å
+          styre hvilken retning stien skal gå (f.eks. for å holde deg innenfor en
+          grunneiers areal), og til slutt sluttpunktet. Siste klikk blir alltid sluttpunktet.
         </p>
         <div id="picked-points">Start: – &nbsp; Slutt: –</div>
+        <button type="button" id="undo-point">Angre siste punkt</button>
         <button type="button" id="reset-points">Nullstill punkter</button>
         <label>
           Stitype

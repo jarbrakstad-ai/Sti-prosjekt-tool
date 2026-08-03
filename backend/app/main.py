@@ -2,6 +2,8 @@
 en analyse basert på beste praksis for bærekraftig stibygging."""
 from __future__ import annotations
 
+import json
+
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -91,15 +93,32 @@ async def dem_terrain_grid(
 @app.post("/api/suggest")
 async def suggest(
     dem: UploadFile = File(..., description="Høydemodell, GeoTIFF i projisert CRS (meter)"),
-    start_lat: float = Form(...),
-    start_lon: float = Form(...),
-    end_lat: float = Form(...),
-    end_lon: float = Form(...),
+    waypoints_json: str = Form(
+        ..., description="JSON-liste med [lat, lon]-par: start, ev. mellompunkt(er), slutt"
+    ),
     trail_type: str = Form("flow", description="'flow' eller 'xc'"),
     target_grade_pct: float = Form(6.0),
 ) -> dict:
     if trail_type not in ("flow", "xc"):
         raise HTTPException(status_code=400, detail="trail_type må være 'flow' eller 'xc'.")
+
+    try:
+        raw_waypoints = json.loads(waypoints_json)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="waypoints_json er ikke gyldig JSON.") from exc
+
+    if not isinstance(raw_waypoints, list) or len(raw_waypoints) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="waypoints_json må være en liste med minst 2 punkter (start og slutt).",
+        )
+
+    try:
+        waypoints = [(float(p[0]), float(p[1])) for p in raw_waypoints]
+    except (TypeError, ValueError, IndexError) as exc:
+        raise HTTPException(
+            status_code=400, detail="Hvert punkt i waypoints_json må være [lat, lon]."
+        ) from exc
 
     dem_bytes = await dem.read()
     try:
@@ -110,7 +129,7 @@ async def suggest(
     options = RouteOptions(trail_type=trail_type, target_grade_pct=target_grade_pct)
 
     try:
-        result = suggest_route(dem_sampler, (start_lat, start_lon), (end_lat, end_lon), options)
+        result = suggest_route(dem_sampler, waypoints, options)
     except RoutingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

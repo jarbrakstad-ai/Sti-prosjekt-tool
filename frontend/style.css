@@ -161,8 +161,9 @@ button {
   transform: translateY(1px);
 }
 
-/* Sekundærknapper: nullstill / last ned / slett */
+/* Sekundærknapper: angre / nullstill / last ned / slett */
 #reset-points,
+#undo-point,
 #download-buttons button {
   cursor: pointer;
   border: 1px solid var(--color-primary);
@@ -174,6 +175,7 @@ button {
   transition: background 0.15s ease;
 }
 #reset-points:hover,
+#undo-point:hover,
 #download-buttons button:hover {
   background: var(--color-primary-light);
 }
@@ -250,10 +252,14 @@ button {
   font-weight: 500;
 }
 
+#undo-point,
 #reset-points {
-  width: 100%;
+  width: calc(50% - 0.25rem);
   margin-bottom: 0.85rem;
   padding: 0.4rem;
+}
+#undo-point {
+  margin-right: 0.5rem;
 }
 
 #download-buttons {
