@@ -120,7 +120,7 @@ async def fetch_dem_geotiff(
     content_type = resp.headers.get("content-type", "")
     if resp.status_code != 200 or "tiff" not in content_type.lower():
         is_text = content_type.startswith("text") or "xml" in content_type.lower()
-        snippet = resp.text[:300] if is_text else "(binært svar, ikke TIFF)"
+        snippet = resp.text[:2000] if is_text else "(binært svar, ikke TIFF)"
         raise DemFetchError(
             f"Høydedata-tjenesten svarte uventet (status {resp.status_code}, "
             f"content-type '{content_type or 'ukjent'}'): {snippet}"
