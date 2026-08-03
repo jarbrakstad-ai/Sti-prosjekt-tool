@@ -127,6 +127,53 @@ function setStatus(message, isError = false) {
   el.className = isError ? "error" : "";
 }
 
+function getApiBase() {
+  return document.getElementById("api-base").value.replace(/\/$/, "");
+}
+
+// ---- Automatisk henting av høydedata (DEM) fra Kartverket ----
+let fetchedDemBlob = null;
+
+function setAutoDemStatus(message, kind) {
+  const el = document.getElementById("auto-dem-status");
+  el.textContent = message;
+  el.className = kind || "";
+}
+
+function getDemForRequest(fileInputId) {
+  const file = document.getElementById(fileInputId).files[0];
+  if (file) return { blob: file, filename: file.name };
+  if (fetchedDemBlob) return { blob: fetchedDemBlob, filename: "auto-dem.tif" };
+  return null;
+}
+
+document.getElementById("fetch-dem-btn").addEventListener("click", async () => {
+  const apiBase = getApiBase();
+  const b = map.getBounds();
+  const resolution = document.getElementById("dem-resolution").value || "10";
+
+  const formData = new FormData();
+  formData.append("min_lat", b.getSouth());
+  formData.append("min_lon", b.getWest());
+  formData.append("max_lat", b.getNorth());
+  formData.append("max_lon", b.getEast());
+  formData.append("resolution_m", resolution);
+
+  setAutoDemStatus("Henter høydedata for kartutsnittet …");
+  try {
+    const res = await fetch(`${apiBase}/api/dem/fetch`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Ukjent feil");
+    }
+    fetchedDemBlob = await res.blob();
+    setAutoDemStatus("Høydedata hentet for synlig kartutsnitt. Kan nå brukes uten opplasting.", "ok");
+  } catch (err) {
+    fetchedDemBlob = null;
+    setAutoDemStatus(`Feil ved henting: ${err.message}`, "error");
+  }
+});
+
 // ---- Modusbytte ----
 const analyzeForm = document.getElementById("analyze-form");
 const suggestForm = document.getElementById("suggest-form");
@@ -149,17 +196,21 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
 analyzeForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const trailFile = document.getElementById("trail-file").files[0];
-  const demFile = document.getElementById("dem-file").files[0];
-  const apiBase = document.getElementById("api-base").value.replace(/\/$/, "");
+  const dem = getDemForRequest("dem-file");
+  const apiBase = getApiBase();
 
-  if (!trailFile || !demFile) {
-    setStatus("Velg både en trasé-fil og en DEM-fil.", true);
+  if (!trailFile) {
+    setStatus("Velg en trasé-fil.", true);
+    return;
+  }
+  if (!dem) {
+    setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
     return;
   }
 
   const formData = new FormData();
   formData.append("trail", trailFile);
-  formData.append("dem", demFile);
+  formData.append("dem", dem.blob, dem.filename);
 
   setStatus("Analyserer …");
   try {
@@ -262,13 +313,13 @@ document.getElementById("reset-points").addEventListener("click", () => {
 
 suggestForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const demFile = document.getElementById("suggest-dem-file").files[0];
-  const apiBase = document.getElementById("suggest-api-base").value.replace(/\/$/, "");
+  const dem = getDemForRequest("suggest-dem-file");
+  const apiBase = getApiBase();
   const trailType = document.getElementById("trail-type").value;
   const targetGrade = document.getElementById("target-grade").value;
 
-  if (!demFile) {
-    setStatus("Velg en DEM-fil.", true);
+  if (!dem) {
+    setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
     return;
   }
   if (!pickedStart || !pickedEnd) {
@@ -277,7 +328,7 @@ suggestForm.addEventListener("submit", async (e) => {
   }
 
   const formData = new FormData();
-  formData.append("dem", demFile);
+  formData.append("dem", dem.blob, dem.filename);
   formData.append("start_lat", pickedStart.lat);
   formData.append("start_lon", pickedStart.lng);
   formData.append("end_lat", pickedEnd.lat);

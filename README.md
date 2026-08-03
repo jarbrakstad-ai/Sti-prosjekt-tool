@@ -8,12 +8,30 @@ høydedata (DEM).
 
 Verktøyet har to modus:
 
+### 0. Høydedata (DEM) – opplasting eller automatisk henting
+
+Begge modiene under trenger en høydemodell (DEM). Du kan enten:
+- **Laste opp** en GeoTIFF DEM selv (projisert CRS i meter, f.eks. UTM33N — kan
+  lastes ned manuelt fra [hoydedata.no](https://hoydedata.no)), eller
+- **Hente den automatisk**: panorer/zoom kartet til ønsket område og trykk
+  "Hent høydedata for kartutsnittet". Backend henter da en GeoTIFF fra
+  Kartverkets WCS-tjeneste (nasjonal høydemodell) for akkurat det synlige
+  kartutsnittet, i valgt oppløsning (standard 10 m/piksel). Praktisk for raskt
+  å komme i gang uten å måtte finne/laste ned data manuelt først.
+
+  **Begrensning:** kartutsnittet må være rimelig lite (maks ca. 600×600 piksler
+  ved valgt oppløsning) – zoom inn til området du faktisk vil analysere. Denne
+  integrasjonen dekker kun Norge (Kartverkets data), og WCS-endepunktet/
+  dekningsnavnet i `backend/app/dem_fetch.py` er satt opp etter beste
+  kjennskap men ikke verifisert mot en live respons i utviklingsmiljøet (se
+  forbehold i modulens docstring) – juster der ved behov. Manuell opplasting
+  fungerer uavhengig av dette.
+
 ### 1. Vurder en gitt trasé
 
 Du laster opp:
 1. En **tras**é som GPX-spor eller GeoJSON `LineString`
-2. En **høydemodell** (GeoTIFF DEM, projisert CRS i meter, f.eks. UTM33N —
-   kan lastes ned fra [hoydedata.no](https://hoydedata.no))
+2. En høydemodell, se punkt 0 over
 
 Verktøyet sampler terrenget langs og på tvers av traséen og rapporterer, per
 segment og samlet:
@@ -100,9 +118,10 @@ repoet – selve deployen kjører deretter automatisk ved hver push.
 ```
 backend/    FastAPI-tjeneste som gjør selve geodata-analysen
   app/
-    main.py             API: POST /api/analyze, POST /api/suggest
+    main.py             API: POST /api/analyze, POST /api/suggest, POST /api/dem/fetch
     gpx_io.py            Parsing av GPX/GeoJSON til punktliste
     dem.py               Lesing/sampling av DEM (høyde + terrenggradient)
+    dem_fetch.py          Automatisk henting av DEM fra Kartverkets WCS-tjeneste
     terrain_metrics.py   Delt vektorgeometri (sidehelling, fall-line-vinkel)
     analysis.py          Vurder gitt trasé: half-rule, helning, reversals
     routing.py           Foreslå ny trasé: A*-søk med samme kostnadsprinsipper
@@ -110,7 +129,8 @@ backend/    FastAPI-tjeneste som gjør selve geodata-analysen
   tests/
     test_analysis.py  Enhetstester for trasé-vurdering (syntetisk DEM)
     test_routing.py   Enhetstester for trasé-forslag (syntetisk DEM)
-    test_api.py       Integrasjonstester av begge endepunktene (ekte GeoTIFF)
+    test_dem_fetch.py Enhetstester for DEM-henting (mocket HTTP, ingen ekte kall)
+    test_api.py       Integrasjonstester av alle endepunktene (ekte GeoTIFF / mock)
 
 frontend/   Enkel statisk nettside (Leaflet-kart) som laster opp filer,
             kaller backend og visualiserer traséen fargekodet etter funn.

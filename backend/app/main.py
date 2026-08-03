@@ -2,11 +2,12 @@
 en analyse basert på beste praksis for bærekraftig stibygging."""
 from __future__ import annotations
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .analysis import Thresholds, analyze_trail
 from .dem import DemError, DemSampler
+from .dem_fetch import DemFetchError, fetch_dem_geotiff
 from .gpx_io import TrailParseError, parse_trail
 from .routing import RouteOptions, RoutingError, suggest_route
 from .schemas import AnalyzeResponse
@@ -50,6 +51,24 @@ async def analyze(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return result
+
+
+@app.post("/api/dem/fetch")
+async def dem_fetch(
+    min_lat: float = Form(...),
+    min_lon: float = Form(...),
+    max_lat: float = Form(...),
+    max_lon: float = Form(...),
+    resolution_m: float = Form(10.0),
+) -> Response:
+    """Henter en GeoTIFF-DEM automatisk fra Kartverkets høydedata-tjeneste for
+    det gitte lat/lon-kartutsnittet, som alternativ til manuell opplasting."""
+    try:
+        tiff_bytes = await fetch_dem_geotiff(min_lat, min_lon, max_lat, max_lon, resolution_m)
+    except DemFetchError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return Response(content=tiff_bytes, media_type="image/tiff")
 
 
 @app.post("/api/suggest")

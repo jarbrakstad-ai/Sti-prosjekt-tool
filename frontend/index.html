@@ -15,6 +15,24 @@
 
   <main>
     <section id="controls">
+      <label>
+        API-adresse
+        <input type="text" id="api-base" value="http://localhost:8000" />
+      </label>
+
+      <div id="auto-dem">
+        <p class="hint">
+          Har du ingen høydemodell? Panorer/zoom kartet til ønsket område og hent
+          den automatisk fra Kartverkets høydedata (Norge).
+        </p>
+        <label>
+          Oppløsning (m/piksel)
+          <input type="number" id="dem-resolution" value="10" min="1" step="1" />
+        </label>
+        <button type="button" id="fetch-dem-btn">Hent høydedata for kartutsnittet</button>
+        <div id="auto-dem-status" class="hint"></div>
+      </div>
+
       <div id="mode-toggle">
         <label><input type="radio" name="mode" value="analyze" checked /> Vurder eksisterende trasé</label>
         <label><input type="radio" name="mode" value="suggest" /> Foreslå trasé</label>
@@ -26,20 +44,16 @@
           <input type="file" id="trail-file" accept=".gpx,.json,.geojson" required />
         </label>
         <label>
-          Høydemodell (GeoTIFF DEM, projisert CRS i meter)
-          <input type="file" id="dem-file" accept=".tif,.tiff" required />
-        </label>
-        <label>
-          API-adresse
-          <input type="text" id="api-base" value="http://localhost:8000" />
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="dem-file" accept=".tif,.tiff" />
         </label>
         <button type="submit">Analyser</button>
       </form>
 
       <form id="suggest-form" hidden>
         <label>
-          Høydemodell (GeoTIFF DEM, projisert CRS i meter)
-          <input type="file" id="suggest-dem-file" accept=".tif,.tiff" required />
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="suggest-dem-file" accept=".tif,.tiff" />
         </label>
         <p class="hint">
           Klikk startpunkt, deretter sluttpunkt i kartet (innenfor DEM-området).
@@ -56,10 +70,6 @@
         <label>
           Ønsket helning (flytsti), %
           <input type="number" id="target-grade" value="6" step="0.5" min="0" />
-        </label>
-        <label>
-          API-adresse
-          <input type="text" id="suggest-api-base" value="http://localhost:8000" />
         </label>
         <button type="submit">Foreslå trasé</button>
       </form>

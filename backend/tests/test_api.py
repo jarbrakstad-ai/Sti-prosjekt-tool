@@ -109,3 +109,35 @@ def test_analyze_rejects_bad_gpx():
         },
     )
     assert res.status_code == 400
+
+
+def test_dem_fetch_endpoint_success(monkeypatch):
+    async def fake_fetch(min_lat, min_lon, max_lat, max_lon, resolution_m=10.0):
+        assert (min_lat, min_lon, max_lat, max_lon) == (59.9, 10.7, 59.91, 10.72)
+        return b"FAKE-TIFF"
+
+    monkeypatch.setattr("app.main.fetch_dem_geotiff", fake_fetch)
+
+    res = client.post(
+        "/api/dem/fetch",
+        data={"min_lat": 59.9, "min_lon": 10.7, "max_lat": 59.91, "max_lon": 10.72},
+    )
+    assert res.status_code == 200, res.text
+    assert res.headers["content-type"] == "image/tiff"
+    assert res.content == b"FAKE-TIFF"
+
+
+def test_dem_fetch_endpoint_maps_error_to_502(monkeypatch):
+    from app.dem_fetch import DemFetchError
+
+    async def fake_fetch(*args, **kwargs):
+        raise DemFetchError("området er for stort")
+
+    monkeypatch.setattr("app.main.fetch_dem_geotiff", fake_fetch)
+
+    res = client.post(
+        "/api/dem/fetch",
+        data={"min_lat": 59.0, "min_lon": 10.0, "max_lat": 61.0, "max_lon": 12.0},
+    )
+    assert res.status_code == 502
+    assert "for stort" in res.json()["detail"]
