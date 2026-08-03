@@ -33,6 +33,7 @@ const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup(); // av som standard
 const jumpLayer = L.layerGroup().addTo(map);
 const cornerLayer = L.layerGroup().addTo(map);
+const compareLayer = L.layerGroup().addTo(map);
 
 const LAYER_BY_CHECKBOX = {
   "layer-trail-lines": trailLineLayer,
@@ -40,6 +41,7 @@ const LAYER_BY_CHECKBOX = {
   "layer-waypoints": waypointLayer,
   "layer-jumps": jumpLayer,
   "layer-corners": cornerLayer,
+  "layer-compare": compareLayer,
 };
 
 for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
@@ -312,6 +314,8 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     setStatus("");
     document.getElementById("report").innerHTML = "";
     document.getElementById("download-buttons").hidden = true;
+    document.getElementById("save-alternative").hidden = true;
+    lastResultForSave = null;
     trailLineLayer.clearLayers();
     trailLabelLayer.clearLayers();
     markerLayer.clearLayers();
@@ -361,6 +365,8 @@ analyzeForm.addEventListener("submit", async (e) => {
       },
     };
     document.getElementById("download-buttons").hidden = false;
+    lastResultForSave = { mode: "Vurdert trasé", analysis: result };
+    document.getElementById("save-alternative").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
@@ -410,6 +416,124 @@ document.getElementById("download-geojson").addEventListener("click", () => {
   };
   triggerDownload("trase.geojson", JSON.stringify(geojson, null, 2), "application/geo+json");
 });
+
+// ---- Sammenlign alternativer (lagres i localStorage i denne nettleseren) ----
+const ALT_STORAGE_KEY = "sti-prosjekt-tool-alternatives-v1";
+const ALT_COLORS = ["#e91e63", "#3949ab", "#00897b", "#f4511e", "#6d4c41", "#7cb342", "#fbc02d", "#546e7a"];
+
+let lastResultForSave = null; // { mode, analysis } - settes ved vellykket analyse/forslag
+
+function loadAlternatives() {
+  try {
+    const raw = localStorage.getItem(ALT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistAlternatives() {
+  try {
+    localStorage.setItem(ALT_STORAGE_KEY, JSON.stringify(savedAlternatives));
+  } catch {
+    // localStorage utilgjengelig (f.eks. privat nettlesing) - fortsetter uten lagring
+  }
+}
+
+let savedAlternatives = loadAlternatives();
+
+function renderCompareLayer() {
+  compareLayer.clearLayers();
+  for (const alt of savedAlternatives) {
+    if (!alt.visible) continue;
+    L.polyline(alt.points, { color: alt.color, weight: 4, opacity: 0.85 })
+      .addTo(compareLayer)
+      .bindTooltip(alt.name, { sticky: true });
+  }
+}
+
+function renderCompareTable() {
+  const wrapper = document.getElementById("compare-table-wrapper");
+  if (savedAlternatives.length === 0) {
+    wrapper.innerHTML = '<p class="hint">Ingen alternativer lagret ennå. Analyser/foreslå en trasé og trykk "Lagre som alternativ".</p>';
+    return;
+  }
+  const rows = savedAlternatives
+    .map(
+      (alt) => `
+        <tr>
+          <td><span class="color-swatch" style="background:${alt.color}"></span></td>
+          <td>${alt.name}</td>
+          <td>${alt.mode}</td>
+          <td>${alt.summary.total_length_m} m</td>
+          <td>${alt.summary.avg_grade_pct} %</td>
+          <td>${alt.summary.max_grade_pct} %</td>
+          <td>${alt.summary.sustainability_score}</td>
+          <td>${alt.jumpCount}</td>
+          <td>${alt.cornerCount}</td>
+          <td><input type="checkbox" data-alt-id="${alt.id}" class="alt-visible-toggle" ${alt.visible ? "checked" : ""} /></td>
+          <td><button type="button" class="remove-alt-btn" data-alt-id="${alt.id}" title="Slett">✕</button></td>
+        </tr>`
+    )
+    .join("");
+  wrapper.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th></th><th>Navn</th><th>Type</th><th>Lengde</th><th>Snitt helning</th>
+          <th>Maks helning</th><th>Score</th><th>Hopp</th><th>Svinger</th><th>Vis</th><th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  wrapper.querySelectorAll(".alt-visible-toggle").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const alt = savedAlternatives.find((a) => a.id === cb.dataset.altId);
+      if (alt) {
+        alt.visible = cb.checked;
+        persistAlternatives();
+        renderCompareLayer();
+      }
+    });
+  });
+  wrapper.querySelectorAll(".remove-alt-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      savedAlternatives = savedAlternatives.filter((a) => a.id !== btn.dataset.altId);
+      persistAlternatives();
+      renderCompareTable();
+      renderCompareLayer();
+    });
+  });
+}
+
+document.getElementById("save-alternative-btn").addEventListener("click", () => {
+  if (!lastResultForSave) return;
+  const nameInput = document.getElementById("alternative-name");
+  const name = nameInput.value.trim() || `Alternativ ${savedAlternatives.length + 1}`;
+  const { mode, analysis } = lastResultForSave;
+
+  const alt = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    mode,
+    savedAt: new Date().toISOString(),
+    summary: analysis.summary,
+    jumpCount: (analysis.jump_opportunities || []).length,
+    cornerCount: (analysis.corner_recommendations || []).length,
+    points: analysis.waypoints.map((w) => [w.lat, w.lon]),
+    color: ALT_COLORS[savedAlternatives.length % ALT_COLORS.length],
+    visible: true,
+  };
+  savedAlternatives.push(alt);
+  persistAlternatives();
+  nameInput.value = "";
+  renderCompareTable();
+  renderCompareLayer();
+});
+
+renderCompareTable();
+renderCompareLayer();
 
 function updatePickedPointsLabel() {
   const fmt = (p) => (p ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : "–");
@@ -481,6 +605,8 @@ suggestForm.addEventListener("submit", async (e) => {
     renderReport(result.analysis, { suggested: true });
     lastExportData = { points: result.points, route: result.route };
     document.getElementById("download-buttons").hidden = false;
+    lastResultForSave = { mode: "Foreslått trasé", analysis: result.analysis };
+    document.getElementById("save-alternative").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }

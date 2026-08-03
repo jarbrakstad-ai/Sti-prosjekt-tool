@@ -115,6 +115,17 @@ standard — juster konstantene i `backend/app/analysis.py` og
 `backend/app/routing.py` etter lokale forhold og eventuelt gjeldende
 retningslinjer (f.eks. fra kommune/grunneier/NOTS).
 
+### 3. Sammenlign flere alternativer
+
+Etter en vellykket analyse/forslag kan du trykke **"Lagre som alternativ"**
+for å legge resultatet til i en sammenligningstabell (lengde, snitt/maks
+helning, bærekraft-score, antall hopplinje-/svingfunn). Hvert alternativ får
+en egen farge og kan vises/skjules i kartet uavhengig av de andre, slik at
+du kan sammenligne flere trasé-alternativer visuelt og tallmessig side om
+side. Alternativene lagres i nettleserens `localStorage` – de er altså
+knyttet til denne enheten/nettleseren og følger ikke automatisk med hvis du
+bytter maskin eller sletter nettleserdata.
+
 ## Driftsatt frontend (GitHub Pages)
 
 `frontend/` er ren statisk HTML/JS/CSS og deployes automatisk til GitHub

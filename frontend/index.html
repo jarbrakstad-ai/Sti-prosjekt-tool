@@ -79,7 +79,17 @@
         <button type="button" id="download-gpx">Last ned GPX</button>
         <button type="button" id="download-geojson">Last ned GeoJSON</button>
       </div>
+      <div id="save-alternative" hidden>
+        <input type="text" id="alternative-name" placeholder="Navn på alternativ (valgfritt)" />
+        <button type="button" id="save-alternative-btn">Lagre som alternativ</button>
+      </div>
       <div id="report"></div>
+
+      <div id="compare-section">
+        <h2>Sammenlign alternativer</h2>
+        <p class="hint">Lagrede alternativer ligger i denne nettleseren (localStorage) og følger ikke med hvis du bytter enhet.</p>
+        <div id="compare-table-wrapper"></div>
+      </div>
     </section>
 
     <section id="map-section">
@@ -91,6 +101,7 @@
         <label><input type="checkbox" id="layer-waypoints" /> GPS-punkter</label>
         <label><input type="checkbox" id="layer-jumps" checked /> Hopplinjer</label>
         <label><input type="checkbox" id="layer-corners" checked /> Svinger (dosering)</label>
+        <label><input type="checkbox" id="layer-compare" checked /> Sammenlignede alternativer</label>
       </div>
       <div id="legend">
         <span class="dot ok"></span> Ingen funn

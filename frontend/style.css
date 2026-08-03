@@ -121,6 +121,33 @@ main {
   cursor: pointer;
 }
 
+#save-alternative {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+#save-alternative input { flex: 1; min-width: 0; }
+#save-alternative button { padding: 0.4rem 0.6rem; cursor: pointer; white-space: nowrap; }
+
+#compare-section { font-size: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(128, 128, 128, 0.3); padding-top: 0.75rem; }
+#compare-section h2 { font-size: 1rem; margin-bottom: 0.25rem; }
+#compare-table-wrapper { overflow-x: auto; }
+#compare-table-wrapper table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+#compare-table-wrapper td, #compare-table-wrapper th {
+  padding: 0.2rem 0.35rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  white-space: nowrap;
+}
+.color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.remove-alt-btn { cursor: pointer; border: none; background: none; color: var(--bad); font-weight: 700; }
+
 #map-section {
   flex: 1;
   position: relative;
