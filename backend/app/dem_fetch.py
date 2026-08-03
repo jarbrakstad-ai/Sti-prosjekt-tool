@@ -1,15 +1,16 @@
 """Automatisk henting av høydedata (DEM) fra Kartverkets WCS-tjeneste (Geonorge),
 som et alternativ til manuell nedlasting fra hoydedata.no + opplasting.
 
-**OBS / viktig forbehold:** WCS-endepunktet og dekningsnavnet (`_COVERAGE_ID`) under
-er satt opp etter beste kjennskap til Kartverkets nasjonale høydemodell-tjeneste på
-tidspunktet dette ble skrevet. Det er **ikke verifisert mot en live respons** i denne
-utviklingssesjonen, fordi utgående nettverk til eksterne vertsnavn var blokkert i
-sandkassen koden ble utviklet i. Hvis henting feiler med en feilmelding om uventet
-svar/format fra tjenesten, sjekk gjeldende GetCapabilities-dokument fra Kartverket
-(se https://hoydedata.no eller https://kartkatalog.geonorge.no, søk etter
-"WCS høydedata") og oppdater `_WCS_ENDPOINTS` / `_COVERAGE_ID` deretter. Manuell
-opplasting av DEM (se dem.py) fungerer uavhengig av dette og er et trygt fallback.
+Verifisert mot en live GetCapabilities-respons fra
+`wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25833`: riktig dekningsnavn er
+`nhm_dtm_topo_{epsg}` (f.eks. `nhm_dtm_topo_25833`), ikke bare `nhm_dtm_{epsg}`
+som først antatt. Datasettet dekker hele Norge uansett hvilken UTM-sone man
+spør via (lonLatEnvelope -2.0–33.3 øst, 57.3–72.1 nord) – sonevalget under
+påvirker kun hvilken projeksjon dataene leveres i, ikke hvilket område som
+dekkes. Navnemønsteret for sone 32/35 er antatt å følge samme mønster, men er
+ikke selv verifisert – juster `_coverage_id()` hvis henting for de sonene
+feiler med "parameter COVERAGE is invalid". Manuell opplasting av DEM (se
+dem.py) fungerer uavhengig av dette og er et trygt fallback.
 """
 from __future__ import annotations
 
@@ -32,7 +33,10 @@ _WCS_ENDPOINTS: dict[int, str] = {
     25833: "https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25833",
     25835: "https://wcs.geonorge.no/skwms1/wcs.hoyde-dtm-nhm-25835",
 }
-_COVERAGE_ID = "nhm_dtm_25833"
+
+
+def _coverage_id(epsg: int) -> str:
+    return f"nhm_dtm_topo_{epsg}"
 
 
 def _choose_utm_epsg(center_lon: float) -> int:
@@ -95,7 +99,7 @@ async def fetch_dem_geotiff(
         "SERVICE": "WCS",
         "VERSION": "1.0.0",
         "REQUEST": "GetCoverage",
-        "COVERAGE": _COVERAGE_ID,
+        "COVERAGE": _coverage_id(epsg),
         "CRS": f"EPSG:{epsg}",
         "BBOX": f"{minx},{miny},{maxx},{maxy}",
         "WIDTH": str(width_px),

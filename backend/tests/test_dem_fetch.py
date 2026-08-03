@@ -55,6 +55,7 @@ async def test_successful_fetch_returns_bytes_and_builds_expected_request():
     assert params["SERVICE"] == "WCS"
     assert params["REQUEST"] == "GetCoverage"
     assert params["CRS"] == "EPSG:25832"  # senter-lengdegrad 10.71 -> sone 32
+    assert params["COVERAGE"] == "nhm_dtm_topo_25832"
     assert params["FORMAT"] == "GeoTIFF"
     assert "BBOX" in params
 
