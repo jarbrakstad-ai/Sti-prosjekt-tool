@@ -315,6 +315,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     document.getElementById("report").innerHTML = "";
     document.getElementById("download-buttons").hidden = true;
     document.getElementById("save-alternative").hidden = true;
+    document.getElementById("view3d-buttons").hidden = true;
     lastResultForSave = null;
     trailLineLayer.clearLayers();
     trailLabelLayer.clearLayers();
@@ -365,8 +366,9 @@ analyzeForm.addEventListener("submit", async (e) => {
       },
     };
     document.getElementById("download-buttons").hidden = false;
-    lastResultForSave = { mode: "Vurdert trasé", analysis: result };
+    lastResultForSave = { mode: "Vurdert trasé", analysis: result, dem };
     document.getElementById("save-alternative").hidden = false;
+    document.getElementById("view3d-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
@@ -605,9 +607,227 @@ suggestForm.addEventListener("submit", async (e) => {
     renderReport(result.analysis, { suggested: true });
     lastExportData = { points: result.points, route: result.route };
     document.getElementById("download-buttons").hidden = false;
-    lastResultForSave = { mode: "Foreslått trasé", analysis: result.analysis };
+    lastResultForSave = { mode: "Foreslått trasé", analysis: result.analysis, dem };
     document.getElementById("save-alternative").hidden = false;
+    document.getElementById("view3d-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
+});
+
+// ---- 3D-visning av trasé + terreng (Three.js) ----
+let threeRenderer = null;
+let threeScene = null;
+let threeCamera = null;
+let threeControls = null;
+let threeAnimationId = null;
+let threeResizeHandler = null;
+let lastTerrainData = null; // { grid, analysis } - cachet slik at eksaggerasjons-slider ikke trenger nytt kall
+
+function setView3DStatus(message, isError = false) {
+  const el = document.getElementById("view3d-status");
+  el.textContent = message;
+  el.style.color = isError ? "#ff8a80" : "";
+}
+
+function disposeThreeScene() {
+  if (threeAnimationId !== null) {
+    cancelAnimationFrame(threeAnimationId);
+    threeAnimationId = null;
+  }
+  if (threeResizeHandler) {
+    window.removeEventListener("resize", threeResizeHandler);
+    threeResizeHandler = null;
+  }
+  if (threeRenderer) {
+    threeRenderer.dispose();
+    if (threeRenderer.domElement && threeRenderer.domElement.parentNode) {
+      threeRenderer.domElement.parentNode.removeChild(threeRenderer.domElement);
+    }
+    threeRenderer = null;
+  }
+  threeScene = null;
+  threeCamera = null;
+  threeControls = null;
+}
+
+function buildTerrainMesh(grid, exaggeration) {
+  const { rows, cols, cell_size_x_m, cell_size_y_m, origin_x_m, origin_y_m, elevations } = grid;
+  const flat = elevations.flat();
+  const minElev = Math.min(...flat);
+
+  const positions = new Float32Array(rows * cols * 3);
+  let p = 0;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const x = origin_x_m + j * cell_size_x_m;
+      const z = origin_y_m + i * cell_size_y_m;
+      const y = (elevations[i][j] - minElev) * exaggeration;
+      positions[p++] = x;
+      positions[p++] = y;
+      positions[p++] = z;
+    }
+  }
+
+  const indices = [];
+  for (let i = 0; i < rows - 1; i++) {
+    for (let j = 0; j < cols - 1; j++) {
+      const a = i * cols + j;
+      const b = a + 1;
+      const c = a + cols;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x6b8f5e,
+    roughness: 0.95,
+    metalness: 0.0,
+    flatShading: true,
+    side: THREE.DoubleSide,
+  });
+  return { mesh: new THREE.Mesh(geometry, material), minElev };
+}
+
+function buildTrailLines(analysis, minElev, exaggeration) {
+  const group = new THREE.Group();
+  const waypoints = analysis.waypoints;
+  const heightBias = 1.0 * exaggeration;
+
+  for (const seg of analysis.segments) {
+    const wpStart = waypoints[seg.index];
+    const wpEnd = waypoints[seg.index + 1];
+    const sev = segmentSeverity(seg.flags);
+    const color = new THREE.Color(severityColor(sev));
+
+    const points = [
+      new THREE.Vector3(wpStart.x_m, (wpStart.elevation_m - minElev) * exaggeration + heightBias, wpStart.y_m),
+      new THREE.Vector3(wpEnd.x_m, (wpEnd.elevation_m - minElev) * exaggeration + heightBias, wpEnd.y_m),
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ color, linewidth: 3 });
+    group.add(new THREE.Line(geometry, material));
+  }
+
+  // Start-/sluttmarkører
+  const markerGeom = new THREE.SphereGeometry(Math.max(1, heightBias * 1.5), 12, 12);
+  const startMarker = new THREE.Mesh(markerGeom, new THREE.MeshStandardMaterial({ color: 0x2f6b4f }));
+  const first = waypoints[0];
+  startMarker.position.set(first.x_m, (first.elevation_m - minElev) * exaggeration + heightBias, first.y_m);
+  group.add(startMarker);
+
+  const endMarker = new THREE.Mesh(markerGeom, new THREE.MeshStandardMaterial({ color: 0xc62828 }));
+  const last = waypoints[waypoints.length - 1];
+  endMarker.position.set(last.x_m, (last.elevation_m - minElev) * exaggeration + heightBias, last.y_m);
+  group.add(endMarker);
+
+  return group;
+}
+
+function renderThreeScene(grid, analysis, exaggeration) {
+  disposeThreeScene();
+
+  const wrapper = document.getElementById("view3d-canvas-wrapper");
+  const width = wrapper.clientWidth || 800;
+  const height = wrapper.clientHeight || 600;
+
+  threeScene = new THREE.Scene();
+  threeScene.background = new THREE.Color(0xbcd4e0);
+
+  const { mesh, minElev } = buildTerrainMesh(grid, exaggeration);
+  threeScene.add(mesh);
+  threeScene.add(buildTrailLines(analysis, minElev, exaggeration));
+
+  const terrainWidth = grid.cols * grid.cell_size_x_m;
+  const terrainDepth = grid.rows * grid.cell_size_y_m;
+  const terrainSpan = Math.max(terrainWidth, terrainDepth);
+  const terrainCenterX = grid.origin_x_m + terrainWidth / 2;
+  const terrainCenterZ = grid.origin_y_m + terrainDepth / 2;
+
+  // Fokuser kameraet på traséens eget omfang, ikke hele terrenget - DEM-en
+  // kan dekke et mye større område enn selve stien (f.eks. hele kartutsnittet).
+  const xs = analysis.waypoints.map((w) => w.x_m);
+  const ys = analysis.waypoints.map((w) => w.y_m);
+  const trailCenterX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const trailCenterZ = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const trailSpan = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 10);
+  // Kameraavstand/-høyde skalert direkte etter traséens utstrekning (ikke hele
+  // terrenget), med en ganske bratt vinkel slik at traséen fyller bildet.
+  const camDist = trailSpan * 0.6;
+  const camHeight = trailSpan * 1.5;
+
+  threeCamera = new THREE.PerspectiveCamera(50, width / height, 0.1, terrainSpan * 20);
+  threeCamera.position.set(trailCenterX, camHeight, trailCenterZ + camDist);
+
+  threeScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+  sun.position.set(terrainCenterX + terrainSpan * 0.5, terrainSpan, terrainCenterZ - terrainSpan * 0.3);
+  threeScene.add(sun);
+
+  threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  threeRenderer.setSize(width, height);
+  wrapper.innerHTML = "";
+  wrapper.appendChild(threeRenderer.domElement);
+
+  threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+  threeControls.target.set(trailCenterX, 0, trailCenterZ);
+  threeControls.update();
+
+  threeResizeHandler = () => {
+    const w = wrapper.clientWidth || width;
+    const h = wrapper.clientHeight || height;
+    threeCamera.aspect = w / h;
+    threeCamera.updateProjectionMatrix();
+    threeRenderer.setSize(w, h);
+  };
+  window.addEventListener("resize", threeResizeHandler);
+
+  function animate() {
+    threeAnimationId = requestAnimationFrame(animate);
+    threeControls.update();
+    threeRenderer.render(threeScene, threeCamera);
+  }
+  animate();
+}
+
+document.getElementById("view-3d-btn").addEventListener("click", async () => {
+  if (!lastResultForSave || !lastResultForSave.dem) return;
+  const apiBase = getApiBase();
+  const modal = document.getElementById("view3d-modal");
+  modal.hidden = false;
+  setView3DStatus("Bygger terreng …");
+
+  try {
+    const formData = new FormData();
+    formData.append("dem", lastResultForSave.dem.blob, lastResultForSave.dem.filename);
+    const res = await fetch(`${apiBase}/api/dem/terrain-grid`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Ukjent feil");
+    }
+    const grid = await res.json();
+    lastTerrainData = { grid, analysis: lastResultForSave.analysis };
+    const exaggeration = parseFloat(document.getElementById("view3d-exaggeration").value);
+    renderThreeScene(grid, lastResultForSave.analysis, exaggeration);
+    setView3DStatus("Dra for å rotere, scroll for å zoome.");
+  } catch (err) {
+    setView3DStatus(`Feil: ${err.message}`, true);
+  }
+});
+
+document.getElementById("view3d-exaggeration").addEventListener("input", (e) => {
+  if (!lastTerrainData) return;
+  renderThreeScene(lastTerrainData.grid, lastTerrainData.analysis, parseFloat(e.target.value));
+});
+
+document.getElementById("view3d-close-btn").addEventListener("click", () => {
+  document.getElementById("view3d-modal").hidden = true;
+  disposeThreeScene();
 });

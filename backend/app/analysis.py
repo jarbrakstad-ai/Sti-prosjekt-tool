@@ -103,6 +103,8 @@ def analyze_trail(
     cc = corner_criteria or CornerCriteria()
 
     xs, ys = _project_points(points, dem.crs)
+    local_x = xs - dem.transform.c
+    local_y = dem.transform.f - ys
     dem_elevations = dem.sample_elevation(xs, ys)
     dzdx, dzdy = dem.sample_gradient(xs, ys)
 
@@ -250,6 +252,8 @@ def analyze_trail(
                 "lon": round(points[i].lon, 6),
                 "elevation_m": round(float(dem_elevations[i]), 1),
                 "distance_from_start_m": round(float(cum_dist[i]), 1),
+                "x_m": round(float(local_x[i]), 2),
+                "y_m": round(float(local_y[i]), 2),
             }
             for i in range(n)
         ],

@@ -100,6 +100,22 @@ def test_suggest_endpoint_end_to_end(tmp_path):
     assert "analysis" in body
 
 
+def test_terrain_grid_endpoint_end_to_end(tmp_path):
+    dem_bytes = make_geotiff_bytes(tmp_path)
+
+    res = client.post(
+        "/api/dem/terrain-grid",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["rows"] > 0
+    assert body["cols"] > 0
+    assert len(body["elevations"]) == body["rows"]
+    assert len(body["elevations"][0]) == body["cols"]
+    assert "origin_x_m" in body and "origin_y_m" in body
+
+
 def test_analyze_rejects_bad_gpx():
     res = client.post(
         "/api/analyze",

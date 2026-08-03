@@ -22,6 +22,8 @@ class Waypoint(BaseModel):
     lon: float
     elevation_m: float
     distance_from_start_m: float
+    x_m: float
+    y_m: float
 
 
 class Segment(BaseModel):

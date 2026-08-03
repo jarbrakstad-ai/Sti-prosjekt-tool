@@ -11,6 +11,7 @@ from .dem_fetch import DemFetchError, fetch_dem_geotiff
 from .gpx_io import TrailParseError, parse_trail
 from .routing import RouteOptions, RoutingError, suggest_route
 from .schemas import AnalyzeResponse
+from .terrain_grid import build_terrain_grid
 
 app = FastAPI(title="Sti-prosjekt-tool API", version="0.1.0")
 
@@ -69,6 +70,22 @@ async def dem_fetch(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return Response(content=tiff_bytes, media_type="image/tiff")
+
+
+@app.post("/api/dem/terrain-grid")
+async def dem_terrain_grid(
+    dem: UploadFile = File(..., description="Høydemodell, GeoTIFF i projisert CRS (meter)"),
+) -> dict:
+    """Returnerer et nedskalert høydegitter for 3D-visning av terrenget i
+    frontend, i samme lokale koordinatsystem som waypoints' x_m/y_m fra
+    /api/analyze og /api/suggest (så lenge det er samme DEM-fil)."""
+    dem_bytes = await dem.read()
+    try:
+        dem_sampler = DemSampler.from_geotiff_bytes(dem_bytes)
+    except DemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return build_terrain_grid(dem_sampler)
 
 
 @app.post("/api/suggest")

@@ -126,6 +126,21 @@ side. Alternativene lagres i nettleserens `localStorage` – de er altså
 knyttet til denne enheten/nettleseren og følger ikke automatisk med hvis du
 bytter maskin eller sletter nettleserdata.
 
+### 4. 3D-visning av trasé og terreng
+
+Etter en vellykket analyse/forslag kan du trykke **"🏔️ Vis trasé i 3D"** for
+å åpne en interaktiv 3D-visning (Three.js) av terrenget med traséen tegnet
+oppå, fargekodet likt som 2D-kartet (grønn/gul/rød etter alvorlighetsgrad på
+funn). Dra for å rotere, scroll for å zoome, og juster
+"Høyde-overdrivelse"-glideren for å gjøre terrengformen tydeligere (terreng
+ser ofte flatere ut enn det er ved 1:1-skala).
+
+Teknisk: et nytt endepunkt (`POST /api/dem/terrain-grid`) returnerer et
+nedskalert høydegitter for den samme DEM-filen, i det samme lokale
+koordinatsystemet (meter fra DEM-ens hjørne) som trasépunktenes `x_m`/`y_m`
+i analyse-responsen – slik at terreng og trasé alltid stemmer geometrisk
+overens, selv om de hentes i separate kall.
+
 ## Driftsatt frontend (GitHub Pages)
 
 `frontend/` er ren statisk HTML/JS/CSS og deployes automatisk til GitHub
@@ -174,10 +189,12 @@ repoet – selve deployen kjører deretter automatisk ved hver push.
 ```
 backend/    FastAPI-tjeneste som gjør selve geodata-analysen
   app/
-    main.py             API: POST /api/analyze, POST /api/suggest, POST /api/dem/fetch
+    main.py             API: POST /api/analyze, POST /api/suggest, POST /api/dem/fetch,
+                        POST /api/dem/terrain-grid
     gpx_io.py            Parsing av GPX/GeoJSON til punktliste
     dem.py               Lesing/sampling av DEM (høyde + terrenggradient)
     dem_fetch.py          Automatisk henting av DEM fra Kartverkets WCS-tjeneste
+    terrain_grid.py       Nedskalert høydegitter for 3D-visning (samme lokale koordinater som waypoints)
     terrain_metrics.py   Delt vektorgeometri (sidehelling, fall-line-vinkel)
     analysis.py          Vurder gitt trasé: half-rule, helning, reversals
     jump_features.py      Finner mulige hopplinje-partier (jevn nedoverbakke)
@@ -185,13 +202,15 @@ backend/    FastAPI-tjeneste som gjør selve geodata-analysen
     routing.py           Foreslå ny trasé: A*-søk med samme kostnadsprinsipper
     schemas.py           Pydantic-modeller for /api/analyze-respons
   tests/
-    test_analysis.py  Enhetstester for trasé-vurdering (syntetisk DEM)
-    test_routing.py   Enhetstester for trasé-forslag (syntetisk DEM)
-    test_dem_fetch.py Enhetstester for DEM-henting (mocket HTTP, ingen ekte kall)
-    test_api.py       Integrasjonstester av alle endepunktene (ekte GeoTIFF / mock)
+    test_analysis.py     Enhetstester for trasé-vurdering (syntetisk DEM)
+    test_routing.py      Enhetstester for trasé-forslag (syntetisk DEM)
+    test_dem_fetch.py     Enhetstester for DEM-henting (mocket HTTP, ingen ekte kall)
+    test_terrain_grid.py  Enhetstester for 3D-terrenggitter + justering mot trasépunkter
+    test_api.py           Integrasjonstester av alle endepunktene (ekte GeoTIFF / mock)
 
-frontend/   Enkel statisk nettside (Leaflet-kart) som laster opp filer,
-            kaller backend og visualiserer traséen fargekodet etter funn.
+frontend/   Enkel statisk nettside (Leaflet-kart + Three.js for 3D-visning)
+            som laster opp filer, kaller backend og visualiserer traséen
+            fargekodet etter funn, i 2D og 3D.
 ```
 
 ## Kjøre lokalt

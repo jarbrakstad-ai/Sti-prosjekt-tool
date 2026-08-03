@@ -274,6 +274,53 @@ button {
 #save-alternative input { flex: 1; width: auto; min-width: 0; margin-top: 0; }
 #save-alternative button { flex: none; width: auto; padding: 0.45rem 0.7rem; cursor: pointer; white-space: nowrap; }
 
+#view3d-buttons { margin-bottom: 1.1rem; }
+#view3d-buttons button {
+  width: 100%;
+  padding: 0.55rem;
+  cursor: pointer;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+#view3d-buttons button:hover { background: var(--color-primary); color: #fff; }
+
+#view3d-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #10151a;
+  display: flex;
+  flex-direction: column;
+}
+#view3d-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: #1c2320;
+  color: #e7ede9;
+  flex-wrap: wrap;
+}
+#view3d-toolbar label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+#view3d-toolbar #view3d-status { color: #9fb0a7; }
+#view3d-close-btn {
+  margin-left: auto;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #e7ede9;
+  font-weight: 600;
+}
+#view3d-close-btn:hover { background: rgba(255, 255, 255, 0.1); }
+#view3d-canvas-wrapper { flex: 1; position: relative; }
+#view3d-canvas-wrapper canvas { display: block; width: 100%; height: 100%; }
+
 #compare-section {
   font-size: 0.85rem;
   margin-top: 1.25rem;
