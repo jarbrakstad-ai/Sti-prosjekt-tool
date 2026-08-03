@@ -7,6 +7,16 @@ standard. De er hentet fra allment brukte tommelfingerregler i internasjonal
 stibyggingslitteratur (Half Rule, Ten Percent Guideline, Grade Reversals,
 Avoid the Fall Line) og bør kalibreres mot lokale grunnforhold, klima og
 gjeldende retningslinjer fra grunneier/kommune før traséen bygges.
+
+Disse tallene samsvarer med NOTS (Norsk organisasjon for terrengsykling) sin
+Stibyggerhåndbok (https://www.nots.no/vart-arbeid/stibyggerhandboka/), som
+gjengir IMBAs retningslinjer for planlegging og linjevalg:
+1. Led vannet vekk fra stien.
+2. La stien følge høydekurvene med hyppige motbakker ("grade reversals").
+3. Halv-regelen: maks stigning på stien = halvparten av terrengets sidehelling.
+4. Maks stigning bør være under 15 %. Gjennomsnittlig stigning bør være maks 10 %.
+6. I bratte hellinger: skjær stien vannrett inn (full bench-teknikk).
+8. Der stigningen overgår 15 %: bruk stein til underlag/forsterkning.
 """
 from __future__ import annotations
 
@@ -286,8 +296,10 @@ _FLAG_MESSAGES = {
         "flytte traséen til brattere sideterreng eller redusere stigraden der."
     ),
     "steep_grade": (
-        "{n} segment(er) har helning over anbefalt maksgrense. Vurder lengre "
-        "svinger/traversering for å redusere helningen."
+        "{n} segment(er) har helning over anbefalt maksgrense (15 %). Vurder "
+        "lengre svinger/traversering for å redusere helningen der det er mulig. "
+        "Der stigningen likevel må overgå 15 % anbefaler NOTS/IMBA å bruke stein "
+        "til underlag/forsterkning (steinsetting) for et mer holdbart parti."
     ),
     "fall_line_high_risk": (
         "{n} segment(er) følger fallinjen tett (høy erosjonsrisiko). Traséen bør "

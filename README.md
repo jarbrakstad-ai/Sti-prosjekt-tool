@@ -136,8 +136,13 @@ Resultatet må alltid kontrolleres i felt og av fagkyndig før bygging.
 Referansegrunnlag: IMBA Trail Solutions (2004) sine prinsipper for
 bærekraftig stibygging ("Half Rule", "Ten Percent Guideline",
 "Grade Reversals", "Avoid the Fall Line"), tilpasset for sykkelsti-/
-flytsti-kontekst. Dette er **veiledende terskler**, ikke en offisiell norsk
-standard — juster konstantene i `backend/app/analysis.py` og
+flytsti-kontekst. De samme retningslinjene gjengis på norsk i
+[NOTS (Norsk organisasjon for terrengsykling) sin Stibyggerhåndbok](https://www.nots.no/vart-arbeid/stibyggerhandboka/),
+og terskelverdiene i koden er kryssjekket mot denne: halv-regelen (maks
+stigning = halvparten av sidehelling), gjennomsnittlig stigning maks 10 %,
+maks stigning under 15 % (med steinsetting/forsterkning anbefalt der
+stigningen likevel må overgå 15 %). Dette er **veiledende terskler**, ikke en
+offisiell norsk standard — juster konstantene i `backend/app/analysis.py` og
 `backend/app/routing.py` etter lokale forhold og eventuelt gjeldende
 retningslinjer (f.eks. fra kommune/grunneier/NOTS).
 
