@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from affine import Affine
 from pyproj import Transformer
+from shapely.geometry import LineString
 
 from app.dem import DemSampler
 from app.routing import RouteOptions, RoutingError, suggest_route
@@ -140,3 +141,36 @@ def test_route_passes_through_via_point_and_smoothing_does_not_move_it():
             break
 
     assert hit, "forventet at ruten faktisk går gjennom mellompunktet"
+
+
+def make_hilly_dem(size: int = 100, cell: float = 5.0) -> DemSampler:
+    """DEM med en stor kolle midt i gitteret pluss to mindre kuler -
+    terreng som tvinger søket til å manøvrere rundt hindringer i flere
+    retninger (relevant for å teste selv-kryssende ruter)."""
+    yy, xx = np.mgrid[0:size, 0:size]
+    cx, cy = size * 0.5, size * 0.5
+    hill = 60 * np.exp(-(((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * (size * 0.18) ** 2)))
+    bump1 = 25 * np.exp(-(((xx - size * 0.25) ** 2 + (yy - size * 0.7) ** 2) / (2 * (size * 0.1) ** 2)))
+    bump2 = 25 * np.exp(-(((xx - size * 0.75) ** 2 + (yy - size * 0.3) ** 2) / (2 * (size * 0.1) ** 2)))
+    array = 1000.0 + hill + bump1 + bump2
+    transform = Affine(cell, 0, 500000, 0, -cell, 6600000)
+    return DemSampler(array=array, transform=transform, crs=UTM)
+
+
+def test_route_around_hilly_terrain_does_not_self_intersect():
+    """Regresjonstest: A*-søket besøker aldri samme rutenett-celle to ganger,
+    men den geometriske linjen kunne likevel krysse/gå innom seg selv - f.eks.
+    når det er billigere å sveipe rundt en kolle enn å justere kursen
+    underveis, eller når en tilstand med retning gjorde at samme celle dukket
+    opp to ganger i den rekonstruerte stien (nådd via to ulike retninger).
+    Se _remove_self_intersections og _dedupe_position_revisits."""
+    dem = make_hilly_dem()
+    start = latlon_for_rowcol(dem, 15, 15)
+    via = latlon_for_rowcol(dem, 50, 48)
+    end = latlon_for_rowcol(dem, 85, 85)
+
+    result = suggest_route(dem, [start, via, end], RouteOptions())
+
+    line = LineString([(lo, la) for la, lo in result["points"]])
+    assert line.is_simple, "ruten krysser/overlapper seg selv geometrisk"
+    assert result["search_stats"]["self_intersects"] is False

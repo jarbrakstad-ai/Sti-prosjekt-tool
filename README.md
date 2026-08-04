@@ -293,9 +293,20 @@ pytest
 
 - Trasé-forslaget er et grid-basert A*-søk – det gir en heuristisk linje,
   ikke en ferdig prosjektert trasé, og bør etterbehandles/kontrolleres i
-  felt (og evt. glattes) før bygging.
-- For store DEM-er (mer enn ca. 400×400 celler) avvises forslag-søket med en
-  feilmelding – beskjær DEM til analyseområdet først.
+  felt (og evt. glattes) før bygging. Søket bruker en retnings-bevisst
+  A*-tilstand (16 innkommende retninger pr. celle) for å unngå unødvendige
+  omveier/sikksakk som en enklere (rad, kolonne)-tilstand kan gi. Rene
+  selv-krysninger (der ruten sveiper rundt en kolle og skjærer sin egen
+  tidligere strekning) fjernes automatisk. Ved flere rutepunkter kan to
+  delstrekk i sjeldne tilfeller likevel møtes/krysse akkurat ved et
+  mellompunkt der terrenget tvinger begge delstrekk gjennom samme smale
+  korridor – siden mellompunktet er obligatorisk og aldri flyttes, er ikke
+  dette alltid løsbart uten å velge et annet mellompunkt.
+  `search_stats.self_intersects` i API-svaret forteller om dette har skjedd.
+- For store DEM-er (mer enn ca. 200×200 celler) avvises forslag-søket med en
+  feilmelding – beskjær DEM til analyseområdet først. Grensen er satt lavere
+  enn den ellers ville vært fordi den retnings-bevisste A*-tilstanden er
+  tyngre pr. celle enn en enkel (rad, kolonne)-tilstand.
 - DEM må være i et projisert CRS i meter (f.eks. UTM). Geografisk DEM
   (grader) støttes ikke ennå.
 - Ingen automatisk henting fra hoydedata.no/OSM ennå — bruker laster opp

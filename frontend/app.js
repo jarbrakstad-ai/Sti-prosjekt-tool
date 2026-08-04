@@ -617,9 +617,14 @@ suggestForm.addEventListener("submit", async (e) => {
     }
     const result = await res.json();
     const stats = result.search_stats;
-    setStatus(
-      `Ferdig. ${stats.final_points} punkter${stats.smoothed ? " (glattet)" : " (uglattet – se hint under)"}.`
-    );
+    let statusMsg = `Ferdig. ${stats.final_points} punkter${stats.smoothed ? " (glattet)" : " (uglattet – se hint under)"}.`;
+    if (stats.self_intersects) {
+      statusMsg +=
+        " OBS: traséen krysser/overlapper seg selv et sted - terrenget tvinger " +
+        "trolig ruten gjennom samme korridor to ganger nær et mellompunkt. " +
+        "Prøv å flytte mellompunktet litt, eller sjekk kartet nøye.";
+    }
+    setStatus(statusMsg, stats.self_intersects);
     renderMap(result.analysis.segments);
     renderReport(result.analysis, { suggested: true });
     lastExportData = { points: result.points, route: result.route };

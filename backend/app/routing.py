@@ -11,15 +11,16 @@ Resultatet bør alltid kontrolleres i felt og av fagkyndig, og kjøres gjennom
 from __future__ import annotations
 
 import heapq
+import math
 from dataclasses import dataclass
 
 import numpy as np
 from pyproj import Transformer
+from shapely.geometry import LineString
 
 from .analysis import Thresholds, analyze_trail
 from .dem import DemError, DemSampler
 from .gpx_io import TrailPoint
-from .terrain_metrics import segment_metrics
 
 # 16 retninger: de 8 vanlige gitter-naboene pluss 8 "springer"-trekk
 # (±1,±2 / ±2,±1), som gir ~22.5° vinkeloppløsning i stedet for 45°.
@@ -53,14 +54,27 @@ class RouteOptions:
     turn_penalty_weight: float = 5.0
     """Straffer brå retningsskift. Høyere for flytstier (ønsker jevn rytme/flyt)."""
 
-    max_grid_nodes: int = 400 * 400
-    """Sikkerhetsgrense: for store DEM-er gir et enormt søkerom og bør beskjæres først."""
+    max_grid_nodes: int = 200 * 200
+    """Sikkerhetsgrense: for store DEM-er gir et enormt søkerom og bør beskjæres først.
+    A*-tilstanden inkluderer retning (16 varianter pr. celle, se _astar) for å
+    unngå unødvendige omveier/sikksakk - det gjør søket mer presist, men også
+    tyngre pr. celle enn en enkel (rad, kolonne)-tilstand, derfor er grensen
+    lavere enn man ellers ville satt den."""
 
     smooth_iterations: int = 2
     """Antall Chaikin-glattingsrunder på den ferdige ruten (0 = ingen glatting)."""
 
     smooth_ratio: float = 0.25
     """Hvor mye hvert hjørne kuttes per Chaikin-runde (0-0.5)."""
+
+    leg_overlap_penalty_weight: float = 50.0
+    """Straffer å gjenbruke celler et tidligere delstrekk (mellom to
+    påfølgende rutepunkter) allerede har brukt, ved traséer med mellompunkt.
+    Uten dette søkes hvert delstrekk helt uavhengig av de andre, og kan derfor
+    ende opp med å konvergere på samme korridor/hylle i terrenget som et annet
+    delstrekk - synlig som en trasé som løper oppå/krysser seg selv i kartet.
+    Straffen er myk (ikke et forbud), slik at et delstrekk fortsatt kan bruke
+    korridoren hvis det faktisk er eneste farbare vei (f.eks. et smalt skar)."""
 
 
 def _edge_cost(
@@ -101,15 +115,63 @@ def _edge_cost(
 EPS_COST = 1e-6
 
 
+def _dedupe_position_revisits(path_rc: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Kutter ut løkker der samme (rad, kolonne) forekommer flere ganger i en
+    rekonstruert sti (se reconstruct() i _astar for hvorfor det kan skje)."""
+    while True:
+        seen: dict[tuple[int, int], int] = {}
+        cut = None
+        for idx, rc in enumerate(path_rc):
+            if rc in seen:
+                cut = (seen[rc], idx)
+                break
+            seen[rc] = idx
+        if cut is None:
+            return path_rc
+        i, j = cut
+        path_rc = path_rc[: i + 1] + path_rc[j + 1 :]
+
+
+def _direction_vectors(dem: DemSampler) -> list[tuple[float, float, float]]:
+    """Forhåndsberegner (ux, uy, avstand_m) for hver av de 16 retningene.
+
+    Gitteret er akse-orientert med konstant pikselstørrelse, så disse er like
+    for et gitt retningsindeks uansett hvor i gitteret man er - beregnes derfor
+    kun én gang pr. søk i stedet for på nytt for hver kant (stor gevinst siden
+    et retnings-utvidet tilstandsrom besøker hver celle opptil 16 ganger)."""
+    dx, dy = dem.pixel_size()
+    out = []
+    for drow, dcol in _NEIGHBORS:
+        wx = dcol * dx
+        wy = drow * dy
+        dist = math.hypot(wx, wy)
+        out.append((wx / dist, wy / dist, dist))
+    return out
+
+
 def _astar(
     dem: DemSampler,
     start_rc: tuple[int, int],
     goal_rc: tuple[int, int],
     opt: RouteOptions,
+    avoid_cells: frozenset[tuple[int, int]] = frozenset(),
 ) -> list[tuple[int, int]]:
+    """A*-søk der tilstanden inkluderer innkommende retning (indeks i
+    _NEIGHBORS, -1 for startpunktet som ennå ikke har en retning).
+
+    Svingstraffen i _edge_cost avhenger av retningen inn til en celle. Uten et
+    utvidet tilstandsrom ville A* "kollapse" hver (rad, kolonne) til én
+    vilkårlig ankomstretning (den som først ga lavest kostnad dit) - og kunne
+    dermed gå glipp av en litt lengre, men rettere innkomst som egentlig gir en
+    betydelig billigere fortsettelse. Det viste seg i praksis som unødvendige
+    omveier og sikksakk i foreslåtte traséer. Med retning som del av
+    tilstanden søker A* korrekt gjennom alle relevante (celle, retning)-par.
+
+    `avoid_cells` er celler tidligere delstrekk (ved mellompunkt) allerede har
+    brukt - en myk straff (RouteOptions.leg_overlap_penalty_weight) holder
+    dette delstrekket unna samme korridor når et alternativ finnes."""
     n_rows, n_cols = dem.shape()
-    dx, dy = dem.pixel_size()
-    cell = (abs(dx) + abs(dy)) / 2.0
+    dir_vecs = _direction_vectors(dem)
 
     goal_x, goal_y = dem.rowcol_to_xy(*goal_rc)
 
@@ -118,13 +180,29 @@ def _astar(
         straight_dist = float(np.hypot(x - goal_x, y - goal_y))
         return opt.distance_weight * straight_dist
 
-    start = start_rc
     goal = goal_rc
 
-    g_score: dict[tuple[int, int], float] = {start: 0.0}
-    came_from: dict[tuple[int, int], tuple[int, int]] = {}
-    open_heap: list[tuple[float, tuple[int, int]]] = [(heuristic(start), start)]
-    visited: set[tuple[int, int]] = set()
+    # Tilstand: (row, col, innkommende_retningsindeks). -1 = ingen retning ennå.
+    State = tuple[int, int, int]
+    start_state: State = (start_rc[0], start_rc[1], -1)
+
+    g_score: dict[State, float] = {start_state: 0.0}
+    came_from: dict[State, State] = {}
+    open_heap: list[tuple[float, State]] = [(heuristic(start_rc), start_state)]
+    visited: set[State] = set()
+
+    def reconstruct(state: State) -> list[tuple[int, int]]:
+        path = [(state[0], state[1])]
+        while state in came_from:
+            state = came_from[state]
+            path.append((state[0], state[1]))
+        path.reverse()
+        # Tilstanden inkluderer retning, så samme (rad, kolonne) kan i
+        # prinsippet forekomme flere ganger i stien (nådd via to ulike
+        # retninger) selv om ingen tilstand er besøkt to ganger - det gir en
+        # sti som bokstavelig talt går innom samme punkt igjen. Kutt ut slike
+        # løkker (behold første besøk, hopp over til rett etter siste besøk).
+        return _dedupe_position_revisits(path)
 
     while open_heap:
         _, current = heapq.heappop(open_heap)
@@ -132,80 +210,147 @@ def _astar(
             continue
         visited.add(current)
 
-        if current == goal:
-            path = [current]
-            while path[-1] in came_from:
-                path.append(came_from[path[-1]])
-            path.reverse()
-            return path
+        row, col, in_dir = current
+        if (row, col) == goal:
+            return reconstruct(current)
 
-        row, col = current
         elev_current = float(dem.array[row, col])
+        if math.isnan(elev_current):
+            continue
         dzdx_c = float(dem.dzdx_grid[row, col])
         dzdy_c = float(dem.dzdy_grid[row, col])
-        x_c, y_c = dem.rowcol_to_xy(row, col)
 
-        prev_dir = None
-        parent = came_from.get(current)
-        if parent is not None:
-            px, py = dem.rowcol_to_xy(*parent)
-            pd = float(np.hypot(x_c - px, y_c - py))
-            if pd > EPS_COST:
-                prev_dir = ((x_c - px) / pd, (y_c - py) / pd)
+        prev_ux = prev_uy = None
+        if in_dir >= 0:
+            prev_ux, prev_uy, _ = dir_vecs[in_dir]
 
-        for drow, dcol in _NEIGHBORS:
+        g_current = g_score[current]
+
+        for dir_idx, (drow, dcol) in enumerate(_NEIGHBORS):
             nrow, ncol = row + drow, col + dcol
             if not (0 <= nrow < n_rows and 0 <= ncol < n_cols):
                 continue
-            neighbor = (nrow, ncol)
+            neighbor = (nrow, ncol, dir_idx)
             if neighbor in visited:
                 continue
 
             elev_n = float(dem.array[nrow, ncol])
-            if np.isnan(elev_current) or np.isnan(elev_n):
+            if math.isnan(elev_n):
                 continue
 
-            x_n, y_n = dem.rowcol_to_xy(nrow, ncol)
-            seg_dist = float(np.hypot(x_n - x_c, y_n - y_c))
-            if seg_dist < EPS_COST:
-                continue
-            ux, uy = (x_n - x_c) / seg_dist, (y_n - y_c) / seg_dist
+            ux, uy, seg_dist = dir_vecs[dir_idx]
 
             dzdx_n = float(dem.dzdx_grid[nrow, ncol])
             dzdy_n = float(dem.dzdy_grid[nrow, ncol])
             dzdx_mid = (dzdx_c + dzdx_n) / 2.0
             dzdy_mid = (dzdy_c + dzdy_n) / 2.0
 
-            cross_slope_pct, terrain_slope_pct, fall_line_angle_deg = segment_metrics(
-                np.array([ux]), np.array([uy]), np.array([dzdx_mid]), np.array([dzdy_mid])
-            )
+            cross_slope_pct = abs(-uy * dzdx_mid + ux * dzdy_mid) * 100.0
+            downhill_norm = math.hypot(dzdx_mid, dzdy_mid)
+            terrain_slope_pct = downhill_norm * 100.0
+            if downhill_norm < 1e-9:
+                fall_line_angle_deg = float("nan")
+            else:
+                cos_angle = -(ux * dzdx_mid + uy * dzdy_mid) / downhill_norm
+                cos_angle = min(max(cos_angle, -1.0), 1.0)
+                fall_line_angle_deg = math.degrees(math.acos(abs(cos_angle)))
+
             grade_pct = 100.0 * (elev_n - elev_current) / seg_dist
 
             turn_angle_deg = 0.0
-            if prev_dir is not None:
-                cos_turn = np.clip(prev_dir[0] * ux + prev_dir[1] * uy, -1.0, 1.0)
-                turn_angle_deg = float(np.degrees(np.arccos(cos_turn)))
+            if prev_ux is not None:
+                cos_turn = min(max(prev_ux * ux + prev_uy * uy, -1.0), 1.0)
+                turn_angle_deg = math.degrees(math.acos(cos_turn))
 
             cost = _edge_cost(
                 grade_pct,
-                float(cross_slope_pct[0]),
-                float(terrain_slope_pct[0]),
-                float(fall_line_angle_deg[0]),
+                cross_slope_pct,
+                terrain_slope_pct,
+                fall_line_angle_deg,
                 seg_dist,
                 turn_angle_deg,
                 opt,
             )
+            if (nrow, ncol) in avoid_cells:
+                cost += opt.leg_overlap_penalty_weight * seg_dist
 
-            tentative_g = g_score[current] + cost
+            tentative_g = g_current + cost
             if tentative_g < g_score.get(neighbor, float("inf")):
                 g_score[neighbor] = tentative_g
                 came_from[neighbor] = current
-                heapq.heappush(open_heap, (tentative_g + heuristic(neighbor), neighbor))
+                heapq.heappush(open_heap, (tentative_g + heuristic((nrow, ncol)), neighbor))
 
     raise RoutingError(
         "Fant ingen mulig rute mellom start- og sluttpunkt (kan skyldes NaN/manglende "
         "høydedata mellom punktene)."
     )
+
+
+def _segment_intersection(
+    a1: tuple[float, float],
+    a2: tuple[float, float],
+    b1: tuple[float, float],
+    b2: tuple[float, float],
+) -> tuple[float, float] | None:
+    """Skjæringspunkt mellom linjestykkene a1-a2 og b1-b2, hvis de faktisk
+    krysser hverandre i det indre (ikke bare deler et endepunkt). None hvis
+    parallelle/ikke-krysende."""
+    x1, y1 = a1
+    x2, y2 = a2
+    x3, y3 = b1
+    x4, y4 = b2
+    d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(d) < 1e-12:
+        return None
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d
+    u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / d
+    if 0.0 < t < 1.0 and 0.0 < u < 1.0:
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+    return None
+
+
+def _remove_self_intersections(
+    xs: np.ndarray,
+    ys: np.ndarray,
+    protected_points: frozenset[tuple[float, float]] = frozenset(),
+    max_cuts: int = 200,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fjerner løkker der ruten krysser seg selv i planet.
+
+    A*-søket besøker aldri samme rutenett-celle to ganger, men den
+    resulterende linjen kan likevel krysse seg selv geometrisk - f.eks. når
+    det er billigere å sveipe rundt en hel kolle på én side enn å justere
+    kursen, og sveipen ender opp med å skjære gjennom traséens egen tidligere
+    strekning. Denne funksjonen finner par av ikke-nabo-liggende linjestykker
+    som krysser hverandre, og kutter ut løkken mellom dem (erstatter med selve
+    skjæringspunktet), gjentatt til ruten er selv-skjæringsfri (eller max_cuts
+    er nådd, som sikkerhetsgrense). `protected_points` (f.eks. obligatoriske
+    mellompunkt ved en flerpunkts-trasé) fjernes aldri av et kutt - kandidater
+    som ville fjernet et beskyttet punkt hoppes over til fordel for et annet
+    kryssende par, om et slikt finnes."""
+    pts = list(zip(xs.tolist(), ys.tolist()))
+
+    for _ in range(max_cuts):
+        n = len(pts)
+        cut = None
+        for i in range(n - 1):
+            for j in range(i + 2, n - 1):
+                if protected_points and any(p in protected_points for p in pts[i + 1 : j + 1]):
+                    continue
+                ip = _segment_intersection(pts[i], pts[i + 1], pts[j], pts[j + 1])
+                if ip is not None:
+                    cut = (i, j, ip)
+                    break
+            if cut is not None:
+                break
+        if cut is None:
+            break
+        i, j, ip = cut
+        pts = pts[: i + 1] + [ip] + pts[j + 1 :]
+
+    new_xs = np.array([p[0] for p in pts])
+    new_ys = np.array([p[1] for p in pts])
+    return new_xs, new_ys
 
 
 def _chaikin_smooth(
@@ -285,34 +430,88 @@ def suggest_route(
         lons, lats = to_wgs84.transform(xs, ys)
         return [TrailPoint(lat=float(la), lon=float(lo)) for la, lo in zip(lats, lons)]
 
-    raw_points_all: list[TrailPoint] = []
-    smooth_points_all: list[TrailPoint] = []
     total_raw_nodes = 0
+    # Celler brukt av tidligere delstrekk - se leg_overlap_penalty_weight:
+    # holder påfølgende delstrekk unna å konvergere på samme korridor som et
+    # tidligere delstrekk (uten å forby det, hvis det faktisk er nødvendig).
+    used_cells: set[tuple[int, int]] = set()
 
+    leg_xy: list[tuple[np.ndarray, np.ndarray]] = []
     for leg in range(len(rc_points) - 1):
-        leg_path_rc = _astar(dem, rc_points[leg], rc_points[leg + 1], opt)
+        leg_path_rc = _astar(
+            dem, rc_points[leg], rc_points[leg + 1], opt, avoid_cells=frozenset(used_cells)
+        )
         total_raw_nodes += len(leg_path_rc)
+        used_cells.update(leg_path_rc)
 
         rows = np.array([p[0] for p in leg_path_rc])
         cols = np.array([p[1] for p in leg_path_rc])
         xs_raw, ys_raw = dem.rowcol_to_xy(rows, cols)
-        leg_raw_points = to_points(xs_raw, ys_raw)
+        # A* besøker aldri samme celle to ganger, men søket kan likevel finne
+        # det billigst å sveipe rundt et hinder (f.eks. en kolle) på en måte
+        # som gjør at selve linjen krysser sin egen tidligere strekning
+        # geometrisk. Kutt ut slike løkker (innad i delstrekket) før de settes
+        # sammen og analyseres.
+        xs_raw, ys_raw = _remove_self_intersections(xs_raw, ys_raw)
+        leg_xy.append((xs_raw, ys_raw))
+
+    # Delstrekkene søkes uavhengig av hverandre (avoid_cells over er kun en
+    # myk kostnad), så to delstrekk kan i sjeldne tilfeller likevel krysse
+    # hverandre der de møtes nær et mellompunkt. Sett sammen hele traséen og
+    # kjør en global løkke-fjerning på tvers av delstrekk-grensene - med
+    # rutepunktene selv beskyttet, slik at de aldri fjernes av et kutt.
+    combined_x: list[float] = []
+    combined_y: list[float] = []
+    junction_xy: list[tuple[float, float]] = []
+    for leg, (xs_raw, ys_raw) in enumerate(leg_xy):
+        xs_list, ys_list = xs_raw.tolist(), ys_raw.tolist()
+        if leg == 0:
+            combined_x.extend(xs_list)
+            combined_y.extend(ys_list)
+            junction_xy.append((xs_list[0], ys_list[0]))
+        else:
+            combined_x.extend(xs_list[1:])
+            combined_y.extend(ys_list[1:])
+        junction_xy.append((xs_list[-1], ys_list[-1]))
+
+    combined_x_arr, combined_y_arr = _remove_self_intersections(
+        np.array(combined_x), np.array(combined_y), protected_points=frozenset(junction_xy)
+    )
+    combined_x, combined_y = combined_x_arr.tolist(), combined_y_arr.tolist()
+
+    raw_points_all = to_points(combined_x_arr, combined_y_arr)
+    smooth_points_all: list[TrailPoint] = []
+
+    # Del den (evt. rensede) sammensatte traséen tilbake i delstrekk ved
+    # rutepunktene, slik at glatting fortsatt kan låse hvert delstrekks egne
+    # endepunkter fast (obligatoriske mellompunkter flyttes aldri).
+    split_indices = [0]
+    search_from = 0
+    for jx, jy in junction_xy[1:]:
+        idx = search_from
+        while (combined_x[idx], combined_y[idx]) != (jx, jy):
+            idx += 1
+        split_indices.append(idx)
+        search_from = idx
+
+    for leg in range(len(split_indices) - 1):
+        start_i, end_i = split_indices[leg], split_indices[leg + 1]
+        xs_leg = np.array(combined_x[start_i : end_i + 1])
+        ys_leg = np.array(combined_y[start_i : end_i + 1])
 
         # Glatt hvert delstrekk for seg, med endepunktene (rutepunktene) låst
         # fast - slik at obligatoriske mellompunkter aldri flyttes av glattingen.
         if opt.smooth_iterations > 0:
-            xs_smooth, ys_smooth = _chaikin_smooth(xs_raw, ys_raw, opt.smooth_iterations, opt.smooth_ratio)
+            xs_smooth, ys_smooth = _chaikin_smooth(xs_leg, ys_leg, opt.smooth_iterations, opt.smooth_ratio)
             leg_smooth_points = to_points(xs_smooth, ys_smooth)
         else:
-            leg_smooth_points = leg_raw_points
+            leg_smooth_points = to_points(xs_leg, ys_leg)
 
         if leg == 0:
-            raw_points_all.extend(leg_raw_points)
             smooth_points_all.extend(leg_smooth_points)
         else:
             # Hopp over første punkt i hvert nye delstrekk - det er identisk
             # med forrige delstrekks siste punkt (rutepunktet de deler).
-            raw_points_all.extend(leg_raw_points[1:])
             smooth_points_all.extend(leg_smooth_points[1:])
 
     raw_analysis = analyze_trail(raw_points_all, dem, Thresholds())
@@ -332,6 +531,19 @@ def suggest_route(
     lons = [p.lon for p in points]
     lats = [p.lat for p in points]
 
+    # Selv-kryssende løkker fjernes der det er mulig (se _remove_self_intersections),
+    # men ved flere rutepunkter kan to delstrekk i sjeldne tilfeller likevel
+    # møtes/krysse akkurat ved et mellompunkt der terrenget tvinger begge
+    # delstrekk gjennom samme smale korridor - siden mellompunktet er
+    # obligatorisk og aldri flyttes, er dette ikke alltid løsbart uten å velge
+    # et annet mellompunkt. Rapporter det i stedet for å skjule det.
+    self_intersects = False
+    if len(points) >= 4:
+        try:
+            self_intersects = not LineString(list(zip(lons, lats))).is_simple
+        except Exception:
+            self_intersects = False
+
     return {
         "route": {
             "type": "LineString",
@@ -344,6 +556,7 @@ def suggest_route(
             "final_points": len(points),
             "smoothed": smoothed,
             "num_legs": len(rc_points) - 1,
+            "self_intersects": self_intersects,
         },
         "analysis": analysis,
     }
