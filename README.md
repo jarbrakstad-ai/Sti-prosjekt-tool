@@ -303,10 +303,17 @@ pytest
   korridor – siden mellompunktet er obligatorisk og aldri flyttes, er ikke
   dette alltid løsbart uten å velge et annet mellompunkt.
   `search_stats.self_intersects` i API-svaret forteller om dette har skjedd.
-- For store DEM-er (mer enn ca. 200×200 celler) avvises forslag-søket med en
-  feilmelding – beskjær DEM til analyseområdet først. Grensen er satt lavere
-  enn den ellers ville vært fordi den retnings-bevisste A*-tilstanden er
-  tyngre pr. celle enn en enkel (rad, kolonne)-tilstand.
+- For store DEM-er (mer enn ca. 400×400 celler) avvises forslag-søket med en
+  feilmelding – beskjær DEM til analyseområdet først. Den retnings-bevisste
+  A*-tilstanden er tyngre pr. celle enn en enkel (rad, kolonne)-tilstand, så
+  et søk nær denne grensen kan ta i overkant av to minutter (målt: ~150 s for
+  et hjørne-til-hjørne-søk over 380×380 celler). Sett `max_grid_nodes` lavere
+  i `backend/app/routing.py` (`RouteOptions`) hvis du heller vil prioritere
+  responstid over å kunne foreslå trasé over et større område. Vær også obs
+  på at enkelte gratis hosting-plattformer (bl.a. Render sin gratis-plan) kan
+  ha en egen forespørsel-timeout (typisk i størrelsesorden 30–100 sekunder)
+  som kan kutte et søk nær maksgrensen før det er ferdig – test gjerne mot et
+  realistisk stort område etter deploy.
 - DEM må være i et projisert CRS i meter (f.eks. UTM). Geografisk DEM
   (grader) støttes ikke ennå.
 - Ingen automatisk henting fra hoydedata.no/OSM ennå — bruker laster opp

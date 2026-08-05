@@ -54,12 +54,12 @@ class RouteOptions:
     turn_penalty_weight: float = 5.0
     """Straffer brå retningsskift. Høyere for flytstier (ønsker jevn rytme/flyt)."""
 
-    max_grid_nodes: int = 200 * 200
+    max_grid_nodes: int = 400 * 400
     """Sikkerhetsgrense: for store DEM-er gir et enormt søkerom og bør beskjæres først.
     A*-tilstanden inkluderer retning (16 varianter pr. celle, se _astar) for å
     unngå unødvendige omveier/sikksakk - det gjør søket mer presist, men også
-    tyngre pr. celle enn en enkel (rad, kolonne)-tilstand, derfor er grensen
-    lavere enn man ellers ville satt den."""
+    tyngre pr. celle enn en enkel (rad, kolonne)-tilstand, så et søk nær denne
+    grensen kan ta betydelig tid (titalls sekunder til noen minutter)."""
 
     smooth_iterations: int = 2
     """Antall Chaikin-glattingsrunder på den ferdige ruten (0 = ingen glatting)."""
