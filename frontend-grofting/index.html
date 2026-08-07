@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grøfteplanlegger</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌾</text></svg>" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🌾 Grøfteplanlegger</h1>
+    <p>Finn en fornuftig linje for grøft/vannvei i terrenget – et forarbeid før du bestiller
+      befaring/prosjektering eller graving. Ikke en ferdig prosjektert plan.</p>
+  </header>
+
+  <main>
+    <section id="controls">
+      <label>
+        API-adresse
+        <input type="text" id="api-base" value="http://localhost:8000" />
+      </label>
+
+      <div id="auto-dem">
+        <p class="hint">
+          Har du ingen høydemodell? Panorer/zoom kartet til jordet ditt og hent
+          den automatisk fra Kartverkets høydedata (Norge).
+        </p>
+        <label>
+          Oppløsning (m/piksel)
+          <input type="number" id="dem-resolution" value="10" min="1" step="1" />
+        </label>
+        <button type="button" id="fetch-dem-btn">Hent høydedata for kartutsnittet</button>
+        <div id="auto-dem-status" class="hint"></div>
+      </div>
+
+      <div id="mode-toggle">
+        <label><input type="radio" name="mode" value="analyze" checked /> Vurder eksisterende grøft/vannvei</label>
+        <label><input type="radio" name="mode" value="suggest" /> Foreslå grøftetrasé</label>
+      </div>
+
+      <form id="analyze-form">
+        <label>
+          Trasé (GPX eller GeoJSON)
+          <input type="file" id="trail-file" accept=".gpx,.json,.geojson" required />
+        </label>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="dem-file" accept=".tif,.tiff" />
+        </label>
+        <button type="submit">Analyser</button>
+      </form>
+
+      <form id="suggest-form" hidden>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="suggest-dem-file" accept=".tif,.tiff" />
+        </label>
+        <p class="hint">
+          Klikk startpunkt (der vannet skal ledes fra) i kartet, deretter ev. ett eller flere
+          mellompunkt for å styre traséen unna steiner, bygninger eller eiendomsgrenser, og til
+          slutt utløpspunktet (bekk, kum, eksisterende grøft). Siste klikk blir alltid utløpet.
+        </p>
+        <div id="picked-points">Start: – &nbsp; Slutt: –</div>
+        <button type="button" id="undo-point">Angre siste punkt</button>
+        <button type="button" id="reset-points">Nullstill punkter</button>
+        <label>
+          Ønsket fall, %
+          <input type="number" id="target-grade" value="1" step="0.1" min="0" />
+        </label>
+        <p class="hint">
+          Et jevnt, svakt fall (typisk 0,5–1 %) er ofte ønskelig: for slakt og vannet
+          kan bli stående, for bratt og grøfta kan grave seg ned/erodere.
+        </p>
+        <button type="submit">Foreslå grøftetrasé</button>
+      </form>
+
+      <div id="status"></div>
+      <div id="download-buttons" hidden>
+        <button type="button" id="download-gpx">Last ned GPX</button>
+        <button type="button" id="download-geojson">Last ned GeoJSON</button>
+      </div>
+      <div id="save-alternative" hidden>
+        <input type="text" id="alternative-name" placeholder="Navn på alternativ (valgfritt)" />
+        <button type="button" id="save-alternative-btn">Lagre som alternativ</button>
+      </div>
+      <div id="view3d-buttons" hidden>
+        <button type="button" id="view-3d-btn">🏔️ Vis i 3D</button>
+      </div>
+      <div id="report"></div>
+
+      <div id="compare-section">
+        <h2>Sammenlign alternativer</h2>
+        <p class="hint">Lagrede alternativer ligger i denne nettleseren (localStorage) og følger ikke med hvis du bytter enhet.</p>
+        <div id="compare-table-wrapper"></div>
+      </div>
+    </section>
+
+    <section id="map-section">
+      <div id="map"></div>
+      <div id="layer-control">
+        <strong>Vis i kart</strong>
+        <label><input type="checkbox" id="layer-trail-lines" checked /> Trasé</label>
+        <label><input type="checkbox" id="layer-segment-labels" /> Segment-etiketter</label>
+        <label><input type="checkbox" id="layer-waypoints" /> GPS-punkter</label>
+        <label><input type="checkbox" id="layer-compare" checked /> Sammenlignede alternativer</label>
+        <label><input type="checkbox" id="layer-jordsmonn" /> Jordsmonn (NIBIO, eksperimentell)</label>
+      </div>
+      <div id="legend">
+        <span class="dot ok"></span> Godt fall (drenerer, lav erosjonsrisiko)
+        <span class="dot warn"></span> For slakt (vann kan bli stående) eller noe bratt
+        <span class="dot bad"></span> For bratt (høy erosjonsrisiko) eller svært slakt
+      </div>
+      <p class="hint" id="jordsmonn-hint" hidden>
+        Jordsmonn-laget er eksperimentelt og ikke fullt verifisert ennå – dekker uansett bare
+        deler av Norge (mest Østlandet, Trøndelag, Jæren). Bruk som en pekepinn, ikke fasit.
+      </p>
+    </section>
+  </main>
+
+  <div id="view3d-modal" hidden>
+    <div id="view3d-toolbar">
+      <strong>🏔️ Trasé i 3D</strong>
+      <label>
+        Høyde-overdrivelse
+        <input type="range" id="view3d-exaggeration" min="1" max="4" step="0.1" value="1.6" />
+      </label>
+      <span id="view3d-status" class="hint"></span>
+      <button type="button" id="view3d-close-btn">✕ Lukk</button>
+    </div>
+    <div id="view3d-canvas-wrapper"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

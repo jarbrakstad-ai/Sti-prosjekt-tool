@@ -281,6 +281,36 @@ python -m http.server 5173
 Frontend forventer backend på `http://localhost:8000` (se `API_BASE` øverst i
 `frontend/app.js`).
 
+## Grøfteplanlegger (eksperimentell egen frontend, samme backend)
+
+`frontend-grofting/` er en separat, ferdig ombygget frontend for et annet bruksområde:
+å finne en fornuftig linje for en grøft/vannvei på et jorde (for å gjøre våt/dårlig
+produserende mark tørrere), i stedet for sykkelsti. Den bruker **samme backend** (samme
+`/api/suggest`/`/api/analyze` osv.) – bare med andre standardverdier (svakt ønsket fall,
+typisk 0,5–1 % i stedet for 6 %), egen merkevare/tekst, og uten de sykkelsti-spesifikke
+elementene (hopplinje, sving-dosering). Kjøres på samme måte:
+
+```bash
+cd frontend-grofting
+python -m http.server 5174
+# åpne http://localhost:5174
+```
+
+Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
+- Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
+  (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er
+  heller ikke erstattet med noe drenerings-spesifikt ennå. Grensesnittet viser i
+  stedet enkle, egne fall-baserte merknader (se `TOO_FLAT_PCT`/`STEEP_WARN_PCT`/
+  `STEEP_BAD_PCT` i `frontend-grofting/app.js`) – grove tommelfingerregler, ikke
+  autoritative ingeniørverdier.
+- Tar **ikke hensyn til grunnforhold** (jordart, dybde til fjell) – kun høydedata.
+  Et NIBIO jordsmonnkart-lag (WMS) er lagt til som eksperimentelt kartlag
+  (`layer-jordsmonn`), men det nøyaktige WMS-lagnavnet er ikke verifisert mot en
+  live GetCapabilities-respons (blokkert i utviklingsmiljøet her) – sjekk
+  `https://wms.nibio.no/cgi-bin/jordsmonn?service=WMS&request=GetCapabilities`
+  og juster `layers`-parameteren i `frontend-grofting/app.js` ved behov. NIBIOs
+  jordsmonnkart dekker uansett bare deler av Norge (mest Østlandet, Trøndelag, Jæren).
+
 ## Kjøre tester
 
 ```bash
