@@ -310,6 +310,19 @@ Rapporten viser, i tillegg til lengde/fall-sammendrag og GPS-punktliste:
   justeres via jordart-nedtrekksmenyen i grensesnittet (leire/sand-silt/finsand).
   Se `buildProfileDrawing()` i `frontend-grofting/app.js`.
 
+**Følg trasé i felt** ("📍 Følg trasé i felt"-knappen etter en analyse/forslag): åpner en
+fullskjerms live-visning som bruker nettleserens posisjons-API
+(`navigator.geolocation.watchPosition`) til å vise hvor du står i kartet i sanntid mens
+du går ute på jordet, sammen med:
+- Avstand fra deg til nærmeste punkt på traséen (til venstre/høyre)
+- Fremdrift langs traséen (meter og prosent av total lengde)
+
+Nyttig for å stikke ut/kontrollere den foreslåtte linja med mobilen i hånden, uten
+GPS-enhet. Krever HTTPS (fungerer også på `localhost` ved lokal testing) og at du gir
+nettleseren tilgang til posisjon. Se `nearestPointOnRoute()` i
+`frontend-grofting/app.js` (planær meter-tilnærming, testet numerisk med kjente
+avstander/retninger - ikke egnet for svært store avstander).
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

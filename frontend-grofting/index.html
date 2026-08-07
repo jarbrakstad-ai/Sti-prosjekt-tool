@@ -97,6 +97,9 @@
       <div id="view3d-buttons" hidden>
         <button type="button" id="view-3d-btn">🏔️ Vis i 3D</button>
       </div>
+      <div id="follow-gps-buttons" hidden>
+        <button type="button" id="follow-gps-btn">📍 Følg trasé i felt</button>
+      </div>
       <div id="report"></div>
 
       <div id="compare-section">
@@ -139,6 +142,29 @@
       <button type="button" id="view3d-close-btn">✕ Lukk</button>
     </div>
     <div id="view3d-canvas-wrapper"></div>
+  </div>
+
+  <div id="follow-gps-modal" hidden>
+    <div id="follow-gps-toolbar">
+      <strong>📍 Følg trasé i felt</strong>
+      <span id="follow-gps-status" class="hint"></span>
+      <button type="button" id="follow-gps-close-btn">✕ Lukk</button>
+    </div>
+    <div id="follow-gps-info">
+      <div class="follow-gps-metric">
+        <span class="follow-gps-metric-label">Avstand til trasé</span>
+        <span class="follow-gps-metric-value" id="follow-gps-distance">–</span>
+      </div>
+      <div class="follow-gps-metric">
+        <span class="follow-gps-metric-label">Retning</span>
+        <span class="follow-gps-metric-value" id="follow-gps-direction">–</span>
+      </div>
+      <div class="follow-gps-metric">
+        <span class="follow-gps-metric-label">Fremdrift</span>
+        <span class="follow-gps-metric-value" id="follow-gps-progress">–</span>
+      </div>
+    </div>
+    <div id="follow-gps-map-wrapper"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

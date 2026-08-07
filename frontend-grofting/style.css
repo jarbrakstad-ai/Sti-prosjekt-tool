@@ -327,6 +327,67 @@ button {
 #view3d-canvas-wrapper { flex: 1; position: relative; }
 #view3d-canvas-wrapper canvas { display: block; width: 100%; height: 100%; }
 
+#follow-gps-buttons { margin-bottom: 1.1rem; }
+#follow-gps-buttons button {
+  width: 100%;
+  padding: 0.55rem;
+  cursor: pointer;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+#follow-gps-buttons button:hover { background: var(--color-primary); color: #fff; }
+
+#follow-gps-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: #10151a;
+  display: flex;
+  flex-direction: column;
+}
+#follow-gps-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: #1c2320;
+  color: #e7ede9;
+  flex-wrap: wrap;
+}
+#follow-gps-toolbar #follow-gps-status { color: #9fb0a7; }
+#follow-gps-close-btn {
+  margin-left: auto;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #e7ede9;
+  font-weight: 600;
+}
+#follow-gps-close-btn:hover { background: rgba(255, 255, 255, 0.1); }
+#follow-gps-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: #1c2320;
+}
+.follow-gps-metric {
+  flex: 1 1 140px;
+  background: #232b27;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.follow-gps-metric-label { display: block; font-size: 0.72rem; color: #9fb0a7; }
+.follow-gps-metric-value { display: block; font-size: 1.3rem; font-weight: 700; color: #e7ede9; }
+#follow-gps-map-wrapper { flex: 1; position: relative; }
+#follow-gps-map-wrapper .leaflet-container { width: 100%; height: 100%; }
+
 #compare-section {
   font-size: 0.85rem;
   margin-top: 1.25rem;

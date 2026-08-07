@@ -412,6 +412,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     document.getElementById("download-buttons").hidden = true;
     document.getElementById("save-alternative").hidden = true;
     document.getElementById("view3d-buttons").hidden = true;
+    document.getElementById("follow-gps-buttons").hidden = true;
     lastResultForSave = null;
     trailLineLayer.clearLayers();
     trailLabelLayer.clearLayers();
@@ -463,6 +464,7 @@ analyzeForm.addEventListener("submit", async (e) => {
     lastResultForSave = { mode: "Vurdert trasé", analysis: result, dem };
     document.getElementById("save-alternative").hidden = false;
     document.getElementById("view3d-buttons").hidden = false;
+    document.getElementById("follow-gps-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
@@ -722,6 +724,7 @@ suggestForm.addEventListener("submit", async (e) => {
     lastResultForSave = { mode: "Foreslått trasé", analysis: result.analysis, dem };
     document.getElementById("save-alternative").hidden = false;
     document.getElementById("view3d-buttons").hidden = false;
+    document.getElementById("follow-gps-buttons").hidden = false;
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
@@ -1027,3 +1030,175 @@ document.getElementById("view3d-close-btn").addEventListener("click", () => {
   document.getElementById("view3d-modal").hidden = true;
   disposeThreeScene();
 });
+
+// ---- Følg trasé i felt (live GPS-posisjon vs. foreslått/vurdert trasé) ----
+let followGpsMap = null;
+let followGpsWatchId = null;
+let followGpsRouteLayer = null;
+let followGpsPositionMarker = null;
+let followGpsAccuracyCircle = null;
+let followGpsConnectorLine = null;
+let followGpsFirstFix = true;
+
+function setFollowGpsStatus(message, isError = false) {
+  const el = document.getElementById("follow-gps-status");
+  el.textContent = message;
+  el.style.color = isError ? "#ff8a80" : "";
+}
+
+/** Meter pr. breddegrad/lengdegrad ved en gitt breddegrad - grei nok
+ * plan-tilnærming for feltavstander (noen hundre meter), ikke egnet for
+ * store avstander/nær polene. */
+function metersPerDegree(latDeg) {
+  const latRad = (latDeg * Math.PI) / 180;
+  return { mPerDegLat: 110574, mPerDegLon: 111320 * Math.cos(latRad) };
+}
+
+/** Finner nærmeste punkt på traséen (polyline av [lat, lon]-par) til en gitt
+ * posisjon, i lokale meter-koordinater med posisjonen selv som origo. Bruker
+ * cumDist (kumulativ avstand langs traséen, meter - fra analysens
+ * waypoints[].distance_from_start_m) til å regne ut fremdrift langs traséen.
+ * crossSign > 0 = posisjonen er til venstre for traséretningen (sett i
+ * gangretning), < 0 = til høyre. */
+function nearestPointOnRoute(lat, lon, routeLatLon, cumDist) {
+  const { mPerDegLat, mPerDegLon } = metersPerDegree(lat);
+  const toXY = (la, lo) => ({ x: (lo - lon) * mPerDegLon, y: (la - lat) * mPerDegLat });
+
+  let best = null;
+  for (let i = 0; i < routeLatLon.length - 1; i++) {
+    const a = toXY(routeLatLon[i][0], routeLatLon[i][1]);
+    const b = toXY(routeLatLon[i + 1][0], routeLatLon[i + 1][1]);
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const lenSq = abx * abx + aby * aby;
+    let t = lenSq > 1e-9 ? -(a.x * abx + a.y * aby) / lenSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = a.x + t * abx;
+    const cy = a.y + t * aby;
+    const dist = Math.hypot(cx, cy);
+    if (!best || dist < best.dist) {
+      const crossSign = abx * -a.y - aby * -a.x;
+      const segStart = cumDist ? cumDist[i] : 0;
+      const segEnd = cumDist ? cumDist[i + 1] : 0;
+      const progress = cumDist ? segStart + t * (segEnd - segStart) : null;
+      best = {
+        dist,
+        crossSign,
+        progress,
+        latlng: [lat + cy / mPerDegLat, lon + cx / mPerDegLon],
+      };
+    }
+  }
+  return best;
+}
+
+function formatDistance(m) {
+  if (m < 10) return `${m.toFixed(1)} m`;
+  return `${Math.round(m)} m`;
+}
+
+function updateFollowGpsUI(lat, lon, accuracy) {
+  if (!lastResultForSave) return;
+  const waypoints = lastResultForSave.analysis.waypoints;
+  const routeLatLon = waypoints.map((w) => [w.lat, w.lon]);
+  const cumDist = waypoints.map((w) => w.distance_from_start_m);
+  const totalLength = cumDist[cumDist.length - 1];
+
+  const nearest = nearestPointOnRoute(lat, lon, routeLatLon, cumDist);
+  if (!nearest) return;
+
+  document.getElementById("follow-gps-distance").textContent = formatDistance(nearest.dist);
+  document.getElementById("follow-gps-direction").textContent =
+    nearest.dist < 1 ? "På linja" : nearest.crossSign > 0 ? "Trasé til venstre" : "Trasé til høyre";
+  document.getElementById("follow-gps-progress").textContent =
+    nearest.progress !== null
+      ? `${Math.round(nearest.progress)} m av ${Math.round(totalLength)} m (${Math.round((nearest.progress / totalLength) * 100)} %)`
+      : "–";
+
+  const latlng = [lat, lon];
+  if (!followGpsPositionMarker) {
+    followGpsPositionMarker = L.circleMarker(latlng, {
+      radius: 8,
+      color: "#1976d2",
+      fillColor: "#1976d2",
+      fillOpacity: 1,
+      weight: 2,
+    }).addTo(followGpsMap);
+    followGpsAccuracyCircle = L.circle(latlng, { radius: accuracy, color: "#1976d2", weight: 1, fillOpacity: 0.08 }).addTo(followGpsMap);
+    followGpsConnectorLine = L.polyline([latlng, nearest.latlng], { color: "#c62828", weight: 2, dashArray: "4,4" }).addTo(followGpsMap);
+  } else {
+    followGpsPositionMarker.setLatLng(latlng);
+    followGpsAccuracyCircle.setLatLng(latlng).setRadius(accuracy);
+    followGpsConnectorLine.setLatLngs([latlng, nearest.latlng]);
+  }
+
+  if (followGpsFirstFix) {
+    followGpsMap.setView(latlng, 18);
+    followGpsFirstFix = false;
+  } else {
+    followGpsMap.panTo(latlng, { animate: true });
+  }
+}
+
+function onFollowGpsPosition(pos) {
+  setFollowGpsStatus(`Nøyaktighet: ~${Math.round(pos.coords.accuracy)} m`);
+  updateFollowGpsUI(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+}
+
+function onFollowGpsError(err) {
+  const messages = {
+    1: "Posisjon ble avslått. Tillat posisjonstilgang for denne siden i nettleseren.",
+    2: "Posisjon utilgjengelig - sjekk GPS/nettverk.",
+    3: "Tidsavbrudd ved henting av posisjon.",
+  };
+  setFollowGpsStatus(messages[err.code] || `Feil: ${err.message}`, true);
+}
+
+document.getElementById("follow-gps-btn").addEventListener("click", () => {
+  if (!lastResultForSave) return;
+  if (!("geolocation" in navigator)) {
+    setStatus("Denne nettleseren støtter ikke posisjonsdeling (geolocation).", true);
+    return;
+  }
+
+  const modal = document.getElementById("follow-gps-modal");
+  modal.hidden = false;
+  followGpsFirstFix = true;
+  setFollowGpsStatus("Henter posisjon …");
+
+  const waypoints = lastResultForSave.analysis.waypoints;
+  followGpsMap = L.map("follow-gps-map-wrapper").setView([waypoints[0].lat, waypoints[0].lon], 16);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap-bidragsytere",
+    maxZoom: 19,
+  }).addTo(followGpsMap);
+  followGpsRouteLayer = L.polyline(
+    waypoints.map((w) => [w.lat, w.lon]),
+    { color: "#8a5a2b", weight: 5 }
+  ).addTo(followGpsMap);
+  followGpsMap.fitBounds(followGpsRouteLayer.getBounds(), { padding: [20, 20] });
+
+  followGpsWatchId = navigator.geolocation.watchPosition(onFollowGpsPosition, onFollowGpsError, {
+    enableHighAccuracy: true,
+    maximumAge: 2000,
+    timeout: 15000,
+  });
+});
+
+function closeFollowGps() {
+  if (followGpsWatchId !== null) {
+    navigator.geolocation.clearWatch(followGpsWatchId);
+    followGpsWatchId = null;
+  }
+  if (followGpsMap) {
+    followGpsMap.remove();
+    followGpsMap = null;
+  }
+  followGpsPositionMarker = null;
+  followGpsAccuracyCircle = null;
+  followGpsConnectorLine = null;
+  followGpsRouteLayer = null;
+  document.getElementById("follow-gps-modal").hidden = true;
+}
+
+document.getElementById("follow-gps-close-btn").addEventListener("click", closeFollowGps);
