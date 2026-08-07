@@ -76,6 +76,15 @@
         <button type="submit">Foreslå grøftetrasé</button>
       </form>
 
+      <label>
+        Antatt jordart (for sidehelning i profiltegning av åpen kanal)
+        <select id="jordart-select">
+          <option value="sand_silt" selected>Sand/silt (1:1,5)</option>
+          <option value="leire">Leire (1:1,25)</option>
+          <option value="finsand">Finsand (1:2,0)</option>
+        </select>
+      </label>
+
       <div id="status"></div>
       <div id="download-buttons" hidden>
         <button type="button" id="download-gpx">Last ned GPX</button>

@@ -304,6 +304,11 @@ Rapporten viser, i tillegg til lengde/fall-sammendrag og GPS-punktliste:
   kapasitet, grøfteavstand, utløpsutforming og sidehelning i åpen kanal. Se
   `buildConstructionSuggestions()` i `frontend-grofting/app.js` for kildehenvisning
   og terskelverdier.
+- **Profiltegning**: to skjematiske SVG-tverrsnitt (rørlagt grøft med filtermasse/rør,
+  og åpen kanal med sidehelning) som visualiserer tallene over. Ikke i målestokk -
+  viser prinsippet, ikke en byggeklar tegning. Sidehelningen i kanaltegningen kan
+  justeres via jordart-nedtrekksmenyen i grensesnittet (leire/sand-silt/finsand).
+  Se `buildProfileDrawing()` i `frontend-grofting/app.js`.
 
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`

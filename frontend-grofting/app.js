@@ -241,11 +241,82 @@ function buildConstructionSuggestions(summary) {
   return suggestions;
 }
 
+const SIDE_SLOPE_RATIO_BY_JORDART = { leire: 1.25, sand_silt: 1.5, finsand: 2.0 };
+const SIDE_SLOPE_LABEL_BY_JORDART = { leire: "leire", sand_silt: "sand/silt", finsand: "finsand" };
+
+/** Skjematisk profiltegning (SVG) av grøfteoppbygging - IKKE i målestokk,
+ * kun til å visualisere prinsippet og de faktiske tallene fra
+ * buildConstructionSuggestions. To varianter tegnes: rørlagt grøft (med
+ * filtermasse rundt drensrøret) og åpen kanal (med sidehelning etter antatt
+ * jordart, se jordart-select i grensesnittet). */
+function buildProfileDrawing(summary, jordart) {
+  const avgGrade = Math.abs(summary.avg_grade_pct);
+  const upsized = avgGrade < PIPE_UPSIZE_PCT_A;
+  const pipeLabel = avgGrade < PIPE_UPSIZE_PCT_B ? "Ø110/97 mm (oppgradert)" : upsized ? "Ø110/97 mm" : "Ø60/50 mm (standard)";
+  const pipeRadius = upsized ? 13 : 9;
+
+  // ---- Diagram A: rørlagt grøft ----
+  const wA = 260, hA = 240;
+  const groundY = 30, bottomY = 190;
+  const topL = 60, topR = 200, botL = 110, botR = 150;
+  const pipeCx = (botL + botR) / 2, pipeCy = bottomY - 15;
+  const diagramA = `
+    <svg viewBox="0 0 ${wA} ${hA}" role="img" aria-label="Tverrsnitt av rørlagt grøft">
+      <defs>
+        <marker id="profile-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5c6b63" />
+        </marker>
+      </defs>
+      <text x="${wA / 2}" y="16" text-anchor="middle" class="profile-title">Rørlagt grøft (tverrsnitt)</text>
+      <line x1="10" y1="${groundY}" x2="${wA - 10}" y2="${groundY}" class="profile-ground" />
+      <polygon points="${topL},${groundY} ${topR},${groundY} ${botR},${bottomY} ${botL},${bottomY}" class="profile-soil" />
+      <circle cx="${pipeCx}" cy="${pipeCy}" r="${pipeRadius + 9}" class="profile-filter" />
+      <circle cx="${pipeCx}" cy="${pipeCy}" r="${pipeRadius}" class="profile-pipe" />
+      <line x1="22" y1="${groundY}" x2="22" y2="${bottomY}" class="profile-dim" />
+      <text x="14" y="${(groundY + bottomY) / 2}" text-anchor="middle" class="profile-dim-label" transform="rotate(-90 14 ${(groundY + bottomY) / 2})">Grøftedybde: 1,0–1,2 m</text>
+      <text x="${pipeCx}" y="${pipeCy + pipeRadius + 22}" text-anchor="middle" class="profile-label">${pipeLabel}</text>
+      <text x="${pipeCx}" y="${pipeCy + pipeRadius + 36}" text-anchor="middle" class="profile-label-muted">Filtermasse (grus) rundt røret</text>
+      <text x="${wA / 2}" y="${groundY - 8}" text-anchor="middle" class="profile-label-muted">Bakkenivå</text>
+    </svg>`;
+
+  // ---- Diagram B: åpen kanal (sidehelning etter jordart) ----
+  const ratio = SIDE_SLOPE_RATIO_BY_JORDART[jordart] || SIDE_SLOPE_RATIO_BY_JORDART.sand_silt;
+  const depthPx = 90, run = ratio * depthPx;
+  const bottomWidth = 40;
+  const groundYB = 20, bottomYB = groundYB + depthPx;
+  const wB = Math.round(bottomWidth + 2 * run + 100);
+  const centerX = wB / 2;
+  const botLB = centerX - bottomWidth / 2, botRB = centerX + bottomWidth / 2;
+  const topLB = botLB - run, topRB = botRB + run;
+  const waterFrac = 0.6; // vannlinje, kun illustrativt
+  const waterOffset = run * waterFrac;
+  const waterY = bottomYB - depthPx * waterFrac;
+  const diagramB = `
+    <svg viewBox="0 0 ${wB} 220" role="img" aria-label="Tverrsnitt av åpen kanal">
+      <text x="${centerX}" y="16" text-anchor="middle" class="profile-title">Åpen kanal (tverrsnitt) – jordart: ${SIDE_SLOPE_LABEL_BY_JORDART[jordart] || "sand/silt"}</text>
+      <line x1="${topLB - 20}" y1="${groundYB}" x2="${topRB + 20}" y2="${groundYB}" class="profile-ground" />
+      <polygon points="${topLB},${groundYB} ${topRB},${groundYB} ${botRB},${bottomYB} ${botLB},${bottomYB}" class="profile-channel" />
+      <line x1="${botLB - waterOffset}" y1="${waterY}" x2="${botRB + waterOffset}" y2="${waterY}" class="profile-water" />
+      <text x="${botLB - waterOffset - 6}" y="${waterY + 4}" text-anchor="end" class="profile-label-muted">Vannlinje (illustrativ)</text>
+      <text x="${(topLB + botLB) / 2 - 6}" y="${(groundYB + bottomYB) / 2}" text-anchor="end" class="profile-label">1:${ratio}</text>
+      <text x="${(topRB + botRB) / 2 + 6}" y="${(groundYB + bottomYB) / 2}" text-anchor="start" class="profile-label">1:${ratio}</text>
+      <text x="${centerX}" y="${bottomYB + 16}" text-anchor="middle" class="profile-label-muted">Bunnbredde (skjematisk)</text>
+      <text x="${centerX}" y="${groundYB - 6}" text-anchor="middle" class="profile-label-muted">Bakkenivå</text>
+    </svg>`;
+
+  return `
+    <p class="hint">Skjematisk - ikke i målestokk. Viser prinsippet for oppbyggingen, ikke en ferdig tegning for anbud/bygging.</p>
+    <div id="profile-drawings">${diagramA}${diagramB}</div>
+  `;
+}
+
 function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
   const notes = buildDrainageNotes(result.segments || []);
   const construction = buildConstructionSuggestions(s);
+  const jordart = document.getElementById("jordart-select").value;
+  const profileDrawing = buildProfileDrawing(s, jordart);
   report.innerHTML = `
     ${suggested ? "<h2>Foreslått grøftetrasé</h2><p class=\"hint\">Heuristisk forslag - bekreft i felt og vurder grunnforhold (jordart) før graving.</p>" : ""}
     <h2>Sammendrag</h2>
@@ -261,10 +332,18 @@ function renderReport(result, { suggested } = {}) {
     <p class="hint">Basert på NLRs veiledning for drenering/åpne kanaler. Grove tommelfingerregler - endelig
       dimensjonering bør gjøres av NLR eller annen fagperson, spesielt for areal/kapasitet og jordart.</p>
     <ul>${construction.map((c) => `<li>${c}</li>`).join("")}</ul>
+    <h2>Profiltegning</h2>
+    ${profileDrawing}
     ${renderWaypointsTable(result.waypoints)}
   `;
   renderWaypointMarkers(result.waypoints);
+  lastRenderedResult = { result, suggested };
 }
+
+let lastRenderedResult = null;
+document.getElementById("jordart-select").addEventListener("change", () => {
+  if (lastRenderedResult) renderReport(lastRenderedResult.result, { suggested: lastRenderedResult.suggested });
+});
 
 function setStatus(message, isError = false) {
   const el = document.getElementById("status");

@@ -488,3 +488,72 @@ button {
   top: 0;
   background: var(--color-surface);
 }
+
+/* Profiltegning (skjematisk SVG av grøft-/kanaloppbygging) */
+#profile-drawings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+#profile-drawings svg {
+  flex: 1 1 240px;
+  max-width: 100%;
+  height: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.profile-title {
+  font-size: 9px;
+  font-weight: 700;
+  fill: var(--color-text);
+}
+.profile-label {
+  font-size: 8px;
+  font-weight: 600;
+  fill: var(--color-text);
+}
+.profile-label-muted {
+  font-size: 7.5px;
+  fill: var(--color-muted);
+}
+.profile-dim-label {
+  font-size: 7.5px;
+  fill: var(--color-muted);
+}
+.profile-ground {
+  stroke: #5c6b63;
+  stroke-width: 2;
+}
+.profile-soil {
+  fill: #c9a876;
+  stroke: #8a5a2b;
+  stroke-width: 1.5;
+}
+.profile-filter {
+  fill: #d8d8d8;
+  stroke: #9a9a9a;
+  stroke-width: 1;
+}
+.profile-pipe {
+  fill: #4a4a4a;
+  stroke: #1f1f1f;
+  stroke-width: 1;
+}
+.profile-dim {
+  stroke: var(--color-muted);
+  stroke-width: 1;
+  marker-start: url(#profile-arrow);
+  marker-end: url(#profile-arrow);
+}
+.profile-channel {
+  fill: #b7c9d6;
+  stroke: #4a6b82;
+  stroke-width: 1.5;
+}
+.profile-water {
+  stroke: #1976d2;
+  stroke-width: 1.5;
+  stroke-dasharray: 4,3;
+}
