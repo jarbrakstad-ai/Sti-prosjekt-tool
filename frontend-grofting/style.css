@@ -507,8 +507,7 @@ button {
 .dot.ok { background: var(--ok); }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--bad); }
-.dot.jump { background: #8e24aa; }
-.dot.corner { background: #00838f; }
+.dot.depression { background: #1976d2; }
 
 .leaflet-tooltip.leaflet-tooltip-top {
   font-size: 10px;

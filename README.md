@@ -334,6 +334,29 @@ alltid bekreftes i felt før graving**. Se `_lowest_point_rc()` i `backend/app/r
 Fungerer likt i hoved-frontenden (`frontend/`) siden det er samme `/api/suggest`-endepunkt,
 men er foreløpig kun eksponert i grensesnittet til Grøfteplanlegger.
 
+### Analyse 2: Sjekk selvdrenering
+
+Ny fane ("Sjekk selvdrenering") som svarer på et litt annet spørsmål enn "hvor bør jeg
+grave": *trenger jordet grøft i det hele tatt, eller drenerer det av seg selv* pga.
+naturlig fall i terrenget? Bruker samme DEM (hele det innlastede kartutsnittet - ingen
+egen områdemarkering nødvendig) og finner **søkk/lavpunkter**: celler uten
+sammenhengende nedadgående vei ut til kanten av det kartlagte området, der vann
+realistisk vil bli stående.
+
+Implementert med "priority-flood"-algoritmen (Barnes, Lehman & Mulla 2014, samme
+prinsipp som WhiteboxTools/RichDEM sin "Fill Depressions") i
+`backend/app/depressions.py` (`POST /api/dem/depressions`) - flommer terrenget innover
+fra kanten av DEM-en og registrerer hvor mye hver celle måtte "fylles" for å få en
+utløpsvei. Bruker DEM-ens utjevnede høydegitter (samme som gradient/helnings-
+beregningene i analysis.py), ikke rådata - testet empirisk at rå punktvis DEM-målestøy
+(noen cm/piksel) ellers ga hundrevis av falske mikro-søkk på reelt jevnt terreng
+(729 falske søkk på en 200×200 DEM med 5 cm støy, mot 0 på utjevnet data).
+
+Resultatet vises som fargede sirkler i kartet (størrelse = areal, farge = dybde) og en
+liste sortert etter størst areal først. **Kjenner ikke til jordart/infiltrasjonsevne**,
+som også avgjør om et areal faktisk drenerer selv - dette er en heuristisk indikasjon
+basert kun på høydedata, ikke en fasit.
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

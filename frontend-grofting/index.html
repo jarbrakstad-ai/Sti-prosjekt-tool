@@ -38,6 +38,7 @@
       <div id="mode-toggle">
         <label><input type="radio" name="mode" value="analyze" checked /> Vurder eksisterende grøft/vannvei</label>
         <label><input type="radio" name="mode" value="suggest" /> Foreslå grøftetrasé</label>
+        <label><input type="radio" name="mode" value="selfdrain" /> Sjekk selvdrenering</label>
       </div>
 
       <form id="analyze-form">
@@ -85,6 +86,27 @@
         <button type="submit">Foreslå grøftetrasé</button>
       </form>
 
+      <form id="selfdrain-form" hidden>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="selfdrain-dem-file" accept=".tif,.tiff" />
+        </label>
+        <p class="hint">
+          Bruker hele det innlastede kartutsnittet (last opp DEM, eller hent automatisk for
+          synlig kartområde over) - ingen egen områdemarkering nødvendig. Finner lavpunkter/søkk
+          der vann vil bli stående uten hjelp, altså steder jordet <em>ikke</em> er selvdrenerende.
+        </p>
+        <label>
+          Minste søkk-dybde som telles, m
+          <input type="number" id="min-depth" value="0.03" step="0.01" min="0" />
+        </label>
+        <p class="hint">
+          Lav terskel fanger opp flere/mindre søkk, men også mer DEM-målestøy. Standard (0,03 m)
+          er en fornuftig start.
+        </p>
+        <button type="submit">Sjekk selvdrenering</button>
+      </form>
+
       <label>
         Antatt jordart (for sidehelning i profiltegning av åpen kanal)
         <select id="jordart-select">
@@ -127,11 +149,13 @@
         <label><input type="checkbox" id="layer-waypoints" /> GPS-punkter</label>
         <label><input type="checkbox" id="layer-compare" checked /> Sammenlignede alternativer</label>
         <label><input type="checkbox" id="layer-jordsmonn" /> Jordsmonn (NIBIO, eksperimentell)</label>
+        <label><input type="checkbox" id="layer-depressions" checked /> Søkk/lavpunkter</label>
       </div>
       <div id="legend">
         <span class="dot ok"></span> Godt fall (drenerer, lav erosjonsrisiko)
         <span class="dot warn"></span> For slakt (vann kan bli stående) eller noe bratt
         <span class="dot bad"></span> For bratt (høy erosjonsrisiko) eller svært slakt
+        <span class="dot depression"></span> Søkk (vann blir stående)
       </div>
       <p class="hint" id="jordsmonn-hint" hidden>
         Jordsmonn-laget er eksperimentelt og ikke fullt verifisert ennå – dekker uansett bare

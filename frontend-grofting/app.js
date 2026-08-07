@@ -55,6 +55,7 @@ const trailLabelLayer = L.layerGroup(); // av som standard - kan bli tett ved ma
 const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup(); // av som standard
 const compareLayer = L.layerGroup().addTo(map);
+const depressionLayer = L.layerGroup().addTo(map);
 
 const LAYER_BY_CHECKBOX = {
   "layer-trail-lines": trailLineLayer,
@@ -62,6 +63,7 @@ const LAYER_BY_CHECKBOX = {
   "layer-waypoints": waypointLayer,
   "layer-compare": compareLayer,
   "layer-jordsmonn": jordsmonnLayer,
+  "layer-depressions": depressionLayer,
 };
 
 for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
@@ -401,12 +403,14 @@ document.getElementById("fetch-dem-btn").addEventListener("click", async () => {
 // ---- Modusbytte ----
 const analyzeForm = document.getElementById("analyze-form");
 const suggestForm = document.getElementById("suggest-form");
+const selfdrainForm = document.getElementById("selfdrain-form");
 
 document.querySelectorAll('input[name="mode"]').forEach((radio) => {
   radio.addEventListener("change", (e) => {
-    const isSuggest = e.target.value === "suggest";
-    analyzeForm.hidden = isSuggest;
-    suggestForm.hidden = !isSuggest;
+    const mode = e.target.value;
+    analyzeForm.hidden = mode !== "analyze";
+    suggestForm.hidden = mode !== "suggest";
+    selfdrainForm.hidden = mode !== "selfdrain";
     setStatus("");
     document.getElementById("report").innerHTML = "";
     document.getElementById("download-buttons").hidden = true;
@@ -418,6 +422,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     trailLabelLayer.clearLayers();
     markerLayer.clearLayers();
     waypointLayer.clearLayers();
+    depressionLayer.clearLayers();
   });
 });
 
@@ -756,6 +761,114 @@ suggestForm.addEventListener("submit", async (e) => {
     document.getElementById("save-alternative").hidden = false;
     document.getElementById("view3d-buttons").hidden = false;
     document.getElementById("follow-gps-buttons").hidden = false;
+  } catch (err) {
+    setStatus(`Feil: ${err.message}`, true);
+  }
+});
+
+// ---- Sjekk selvdrenering (søkk-/lavpunktdeteksjon over hele kartutsnittet) ----
+function depressionSeverity(maxDepthM) {
+  if (maxDepthM > 0.2) return "bad";
+  if (maxDepthM > 0.08) return "warn";
+  return "ok";
+}
+
+function renderDepressions(response) {
+  depressionLayer.clearLayers();
+  for (const d of response.depressions) {
+    const sev = depressionSeverity(d.max_depth_m);
+    const radius = Math.max(6, Math.min(24, Math.sqrt(d.area_m2 / Math.PI)));
+    L.circleMarker([d.lat, d.lon], {
+      radius,
+      color: "#1976d2",
+      fillColor: severityColor(sev),
+      fillOpacity: 0.6,
+      weight: 2,
+    })
+      .addTo(depressionLayer)
+      .bindPopup(
+        `<strong>Søkk</strong><br>Areal: ${d.area_m2.toFixed(0)} m²<br>Maks dybde: ${d.max_depth_m.toFixed(2)} m` +
+          `<br>Volum: ${d.volume_m3.toFixed(1)} m³`
+      );
+  }
+}
+
+function renderSelfdrainReport(response) {
+  const report = document.getElementById("report");
+  const n = response.depressions.length;
+  const fraction = response.depression_area_fraction_pct;
+
+  let verdict;
+  if (n === 0) {
+    verdict = "Ingen søkk funnet ut fra høydedataene - jordet ser ut til å ha en sammenhengende nedadgående vei ut fra hele kartutsnittet.";
+  } else if (fraction < 1) {
+    verdict = `Stort sett selvdrenerende - ${n} mindre søkk funnet, til sammen ${fraction} % av arealet.`;
+  } else {
+    verdict = `${n} søkk funnet, til sammen ${fraction} % av arealet - vurder tiltak (grøft/planering) på de største/dypeste punktene.`;
+  }
+
+  const rows = response.depressions
+    .slice(0, 50)
+    .map(
+      (d, i) =>
+        `<tr><td>${i + 1}</td><td>${d.area_m2.toFixed(0)} m²</td><td>${d.max_depth_m.toFixed(2)} m</td><td>${d.volume_m3.toFixed(1)} m³</td></tr>`
+    )
+    .join("");
+  const truncatedNote =
+    n > 50 ? `<p class="hint">Viser de 50 største av ${n} søkk.</p>` : "";
+
+  report.innerHTML = `
+    <h2>Selvdrenering</h2>
+    <p class="hint">Basert kun på høydedata - kjenner ikke til jordart/infiltrasjonsevne, som også
+      påvirker om et areal faktisk drenerer selv. Søkk markert i kartet, størst/dypest først under.</p>
+    <table>
+      <tr><td>Totalt areal</td><td>${response.total_area_m2.toFixed(0)} m²</td></tr>
+      <tr><td>Antall søkk</td><td>${n}</td></tr>
+      <tr><td>Andel av arealet i søkk</td><td>${fraction} %</td></tr>
+    </table>
+    <p><strong>${verdict}</strong></p>
+    ${
+      n > 0
+        ? `<table>
+            <thead><tr><th>#</th><th>Areal</th><th>Maks dybde</th><th>Volum</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          ${truncatedNote}`
+        : ""
+    }
+  `;
+}
+
+selfdrainForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const dem = getDemForRequest("selfdrain-dem-file");
+  const apiBase = getApiBase();
+  const minDepth = document.getElementById("min-depth").value;
+
+  if (!dem) {
+    setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("dem", dem.blob, dem.filename);
+  formData.append("min_depth_m", minDepth);
+
+  setStatus("Sjekker selvdrenering …");
+  try {
+    const res = await fetch(`${apiBase}/api/dem/depressions`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Ukjent feil");
+    }
+    const result = await res.json();
+    setStatus(`Ferdig. ${result.depressions.length} søkk funnet.`);
+    renderDepressions(result);
+    renderSelfdrainReport(result);
+    if (result.depressions.length) {
+      const bounds = L.latLngBounds(result.depressions.map((d) => [d.lat, d.lon]));
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+    }
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }

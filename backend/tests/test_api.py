@@ -129,6 +129,54 @@ def test_suggest_endpoint_rejects_empty_waypoints(tmp_path):
     assert res.status_code == 400
 
 
+def make_geotiff_bytes_with_pit(tmp_path, size: int = 40, cell: float = 5.0) -> bytes:
+    array = np.full((size, size), 1000.0, dtype="float64")
+    array[15:21, 15:21] -= 0.5  # innelukket søkk, jf. test_depressions.py
+
+    transform = Affine(cell, 0, 500000, 0, -cell, 6600000)
+    path = tmp_path / "dem_pit.tif"
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=size,
+        width=size,
+        count=1,
+        dtype="float64",
+        crs=CRS.from_string(UTM),
+        transform=transform,
+    ) as dst:
+        dst.write(array, 1)
+    return path.read_bytes()
+
+
+def test_depressions_endpoint_end_to_end(tmp_path):
+    dem_bytes = make_geotiff_bytes_with_pit(tmp_path)
+
+    res = client.post(
+        "/api/dem/depressions",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+        data={"min_depth_m": 0.03},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert len(body["depressions"]) == 1
+    assert body["depressions"][0]["cell_count"] == 36
+    assert body["depression_area_fraction_pct"] > 0
+    assert "lat" in body["depressions"][0] and "lon" in body["depressions"][0]
+
+
+def test_depressions_endpoint_no_pit_returns_empty_list(tmp_path):
+    dem_bytes = make_geotiff_bytes(tmp_path)
+
+    res = client.post(
+        "/api/dem/depressions",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["depressions"] == []
+
+
 def test_terrain_grid_endpoint_end_to_end(tmp_path):
     dem_bytes = make_geotiff_bytes(tmp_path)
 

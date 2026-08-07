@@ -10,12 +10,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from .analysis import Thresholds, analyze_trail
 from .dem import DemError, DemSampler
 from .dem_fetch import DemFetchError, fetch_dem_geotiff
+from .depressions import depressions_to_response, find_depressions
 from .gpx_io import TrailParseError, parse_trail
 from .routing import RouteOptions, RoutingError, suggest_route
 from .schemas import AnalyzeResponse
 from .terrain_grid import build_terrain_grid
 
 app = FastAPI(title="Sti-prosjekt-tool API", version="0.1.0")
+
+MAX_DEPRESSION_GRID_NODES = 1000 * 1000
+"""Sikkerhetsgrense for /api/dem/depressions - søkk-analysen er langt
+billigere pr. celle enn A*-ruteforslaget (målt: ~1.7s for 700x700 celler),
+så grensen kan være mye høyere enn RouteOptions.max_grid_nodes."""
 
 app.add_middleware(
     CORSMiddleware,
@@ -88,6 +94,40 @@ async def dem_terrain_grid(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return build_terrain_grid(dem_sampler)
+
+
+@app.post("/api/dem/depressions")
+async def dem_depressions(
+    dem: UploadFile = File(..., description="Høydemodell, GeoTIFF i projisert CRS (meter)"),
+    min_depth_m: float = Form(0.03, description="Minste søkk-dybde (meter) for å telles med - demper DEM-målestøy"),
+) -> dict:
+    """Finner søkk/forsenkninger i DEM-en - celler uten sammenhengende
+    nedadgående vei ut til kanten av det kartlagte området, der vann vil bli
+    stående. Relevant for å vurdere om et jorde er "selvdrenerende" (drenerer
+    av seg selv pga. fall i terrenget) eller har lavpunkter som trenger tiltak
+    (grøft/planering). Heuristikk basert kun på høydedata - kjenner ikke til
+    jordart/infiltrasjonsevne, som også påvirker faktisk selvdrenering."""
+    if min_depth_m < 0:
+        raise HTTPException(status_code=400, detail="min_depth_m kan ikke være negativ.")
+
+    dem_bytes = await dem.read()
+    try:
+        dem_sampler = DemSampler.from_geotiff_bytes(dem_bytes)
+    except DemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    n_rows, n_cols = dem_sampler.shape()
+    if n_rows * n_cols > MAX_DEPRESSION_GRID_NODES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"DEM-en er for stor for søkk-analyse ({n_rows}x{n_cols} celler). "
+                f"Beskjær til et mindre område (maks {MAX_DEPRESSION_GRID_NODES} celler)."
+            ),
+        )
+
+    depressions = find_depressions(dem_sampler, min_depth_m=min_depth_m)
+    return depressions_to_response(dem_sampler, depressions)
 
 
 @app.post("/api/suggest")
