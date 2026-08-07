@@ -379,6 +379,21 @@ def _chaikin_smooth(
     return new_xs, new_ys
 
 
+def _lowest_point_rc(dem: DemSampler) -> tuple[int, int]:
+    """Finner (rad, kolonne) for det laveste gyldige punktet i hele DEM-en -
+    brukt som automatisk foreslått "utløp" når bare et startpunkt er oppgitt
+    (se suggest_route). DEM-en gir ingen informasjon om hvor det faktisk
+    finnes en bekk/kum/grøft i virkeligheten - det laveste punktet er bare en
+    fysisk fornuftig gjetning (vann søker uansett dit) som må bekreftes i
+    felt før bygging."""
+    array = dem.array
+    if np.all(np.isnan(array)):
+        raise RoutingError("Høydemodellen mangler gyldige høydeverdier - kan ikke finne laveste punkt.")
+    idx = int(np.nanargmin(array))
+    row, col = np.unravel_index(idx, array.shape)
+    return int(row), int(col)
+
+
 def suggest_route(
     dem: DemSampler,
     waypoints_latlon: list[tuple[float, float]],
@@ -389,11 +404,18 @@ def suggest_route(
     i mellom er faste mellompunkter ruten *skal* gå gjennom (f.eks. for å styre
     linjeføringen unna et areal, eller innenfor en bestemt grunneiers eiendom).
     A* kjøres separat for hvert delstrekk (mellom to påfølgende punkter) og
-    settes sammen til én sammenhengende trasé."""
+    settes sammen til én sammenhengende trasé.
+
+    Hvis kun ETT punkt oppgis (startpunkt), foreslås sluttpunktet automatisk
+    som det laveste punktet i DEM-en - se _lowest_point_rc. Dette er en
+    fysisk fornuftig gjetning, ikke en bekreftelse på at det faktisk finnes
+    et gyldig utløp (bekk/kum/grøft) der i virkeligheten - `search_stats`
+    i svaret markerer at sluttpunktet ble valgt automatisk, slik at brukeren
+    kan varsles om å kontrollere det i felt."""
     opt = options or RouteOptions()
 
-    if len(waypoints_latlon) < 2:
-        raise RoutingError("Trenger minst et startpunkt og et sluttpunkt.")
+    if len(waypoints_latlon) < 1:
+        raise RoutingError("Trenger minst et startpunkt.")
 
     n_rows, n_cols = dem.shape()
     if n_rows * n_cols > opt.max_grid_nodes:
@@ -419,6 +441,17 @@ def suggest_route(
             else:
                 label = f"Mellompunkt {i}"
             raise RoutingError(f"{label} ligger utenfor DEM-området: {exc}") from exc
+
+    auto_endpoint = False
+    if len(rc_points) == 1:
+        auto_endpoint = True
+        goal_rc = _lowest_point_rc(dem)
+        if goal_rc == rc_points[0]:
+            raise RoutingError(
+                "Startpunktet er allerede det laveste punktet i høydemodellen - "
+                "kan ikke foreslå et automatisk utløp herfra."
+            )
+        rc_points.append(goal_rc)
 
     for i in range(len(rc_points) - 1):
         if rc_points[i] == rc_points[i + 1]:
@@ -557,6 +590,7 @@ def suggest_route(
             "smoothed": smoothed,
             "num_legs": len(rc_points) - 1,
             "self_intersects": self_intersects,
+            "auto_endpoint": auto_endpoint,
         },
         "analysis": analysis,
     }

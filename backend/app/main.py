@@ -94,7 +94,12 @@ async def dem_terrain_grid(
 async def suggest(
     dem: UploadFile = File(..., description="Høydemodell, GeoTIFF i projisert CRS (meter)"),
     waypoints_json: str = Form(
-        ..., description="JSON-liste med [lat, lon]-par: start, ev. mellompunkt(er), slutt"
+        ...,
+        description=(
+            "JSON-liste med [lat, lon]-par: start, ev. mellompunkt(er), slutt. "
+            "Kun ett punkt (bare start) foreslår automatisk sluttpunkt som laveste "
+            "punkt i DEM-en (se search_stats.auto_endpoint i svaret)."
+        ),
     ),
     trail_type: str = Form("flow", description="'flow' eller 'xc'"),
     target_grade_pct: float = Form(6.0),
@@ -107,10 +112,10 @@ async def suggest(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="waypoints_json er ikke gyldig JSON.") from exc
 
-    if not isinstance(raw_waypoints, list) or len(raw_waypoints) < 2:
+    if not isinstance(raw_waypoints, list) or len(raw_waypoints) < 1:
         raise HTTPException(
             status_code=400,
-            detail="waypoints_json må være en liste med minst 2 punkter (start og slutt).",
+            detail="waypoints_json må være en liste med minst 1 punkt (startpunktet).",
         )
 
     try:

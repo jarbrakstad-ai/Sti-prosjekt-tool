@@ -677,6 +677,10 @@ document.getElementById("undo-point").addEventListener("click", () => {
   updatePickedPointsLabel();
 });
 
+document.getElementById("auto-endpoint-checkbox").addEventListener("change", (e) => {
+  document.getElementById("auto-endpoint-hint").hidden = !e.target.checked;
+});
+
 suggestForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const dem = getDemForRequest("suggest-dem-file");
@@ -687,8 +691,17 @@ suggestForm.addEventListener("submit", async (e) => {
     setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
     return;
   }
-  if (routeWaypoints.length < 2) {
-    setStatus("Klikk minst et startpunkt og et utløpspunkt i kartet først (og ev. mellompunkt mellom dem).", true);
+  const autoEndpoint = document.getElementById("auto-endpoint-checkbox").checked;
+  if (routeWaypoints.length < 1) {
+    setStatus("Klikk minst et startpunkt i kartet først.", true);
+    return;
+  }
+  if (!autoEndpoint && routeWaypoints.length < 2) {
+    setStatus(
+      "Klikk minst et startpunkt og et utløpspunkt i kartet først (og ev. mellompunkt mellom dem), " +
+        "eller kryss av for automatisk utløpspunkt.",
+      true
+    );
     return;
   }
 
@@ -710,15 +723,33 @@ suggestForm.addEventListener("submit", async (e) => {
     const result = await res.json();
     const stats = result.search_stats;
     let statusMsg = `Ferdig. ${stats.final_points} punkter${stats.smoothed ? " (glattet)" : " (uglattet – se hint under)"}.`;
+    let isWarning = false;
+    if (stats.auto_endpoint) {
+      statusMsg +=
+        " Utløpspunktet ble foreslått automatisk (laveste punkt i kartutsnittet) - " +
+        "BEKREFT I FELT at det faktisk finnes en bekk/kum/grøft der før du graver.";
+      isWarning = true;
+    }
     if (stats.self_intersects) {
       statusMsg +=
         " OBS: traséen krysser/overlapper seg selv et sted - terrenget tvinger " +
         "trolig ruten gjennom samme korridor to ganger nær et mellompunkt. " +
         "Prøv å flytte mellompunktet litt, eller sjekk kartet nøye.";
+      isWarning = true;
     }
-    setStatus(statusMsg, stats.self_intersects);
+    setStatus(statusMsg, isWarning);
     renderMap(result.analysis.segments);
     renderReport(result.analysis, { suggested: true });
+    if (stats.auto_endpoint) {
+      const [lat, lon] = result.points[result.points.length - 1];
+      L.marker([lat, lon], { title: "Automatisk foreslått utløp" })
+        .addTo(markerLayer)
+        .bindPopup(
+          "<strong>Automatisk foreslått utløp</strong><br>Laveste punkt i kartutsnittet - " +
+            "bekreft i felt at det finnes en bekk/kum/grøft her før graving."
+        )
+        .openPopup();
+    }
     lastExportData = { points: result.points, route: result.route };
     document.getElementById("download-buttons").hidden = false;
     lastResultForSave = { mode: "Foreslått trasé", analysis: result.analysis, dem };

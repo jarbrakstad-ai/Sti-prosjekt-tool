@@ -323,6 +323,17 @@ nettleseren tilgang til posisjon. Se `nearestPointOnRoute()` i
 `frontend-grofting/app.js` (planær meter-tilnærming, testet numerisk med kjente
 avstander/retninger - ikke egnet for svært store avstander).
 
+**Automatisk utløpspunkt**: kryss av "La algoritmen foreslå utløpspunkt automatisk"
+under "Foreslå grøftetrasé" for å bare klikke ett startpunkt. Backend søker da
+(med samme terrengfølgende A*-kostnadsfunksjon som ellers) mot det **laveste punktet
+i kartutsnittet** som utløp - fysisk fornuftig siden vann uansett søker dit, men
+DEM-en vet ingenting om hvor det faktisk finnes en bekk/kum/eksisterende grøft å
+lede vannet til i virkeligheten. Svaret markeres med `search_stats.auto_endpoint: true`,
+grensesnittet varsler tydelig og markerer utløpspunktet spesielt i kartet - **må
+alltid bekreftes i felt før graving**. Se `_lowest_point_rc()` i `backend/app/routing.py`.
+Fungerer likt i hoved-frontenden (`frontend/`) siden det er samme `/api/suggest`-endepunkt,
+men er foreløpig kun eksponert i grensesnittet til Grøfteplanlegger.
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

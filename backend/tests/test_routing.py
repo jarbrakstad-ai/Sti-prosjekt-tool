@@ -174,3 +174,56 @@ def test_route_around_hilly_terrain_does_not_self_intersect():
     line = LineString([(lo, la) for la, lo in result["points"]])
     assert line.is_simple, "ruten krysser/overlapper seg selv geometrisk"
     assert result["search_stats"]["self_intersects"] is False
+
+
+def make_tilted_plane_dem(size: int = 40, cell: float = 5.0) -> DemSampler:
+    """DEM som heller jevnt nedover mot siste rad - laveste celle er
+    entydig (rad, kolonne) = (size - 1, 0), siden np.nanargmin plukker
+    første forekomst i rekkefølge ved uavgjort."""
+    rows = np.arange(size)[:, None]
+    array = np.tile(1000.0 - 0.5 * rows, (1, size)).astype(float)
+    transform = Affine(cell, 0, 500000, 0, -cell, 6600000)
+    return DemSampler(array=array, transform=transform, crs=UTM)
+
+
+def test_single_waypoint_auto_suggests_lowest_point_as_endpoint():
+    """Når bare startpunkt oppgis, skal ruten automatisk søke mot det
+    laveste punktet i DEM-en (fysisk fornuftig utløps-gjetning), og
+    search_stats skal markere at dette skjedde."""
+    dem = make_tilted_plane_dem()
+    start = latlon_for_rowcol(dem, 5, 20)
+
+    result = suggest_route(dem, [start], RouteOptions())
+
+    assert result["search_stats"]["auto_endpoint"] is True
+    assert result["search_stats"]["num_legs"] == 1
+
+    to_dem = Transformer.from_crs("EPSG:4326", UTM, always_xy=True)
+    last_lat, last_lon = result["points"][-1]
+    x, y = to_dem.transform(last_lon, last_lat)
+    row, col = dem.xy_to_nearest_rowcol(x, y)
+    assert (row, col) == (39, 0)
+
+
+def test_multi_waypoint_route_reports_auto_endpoint_false():
+    dem = make_flat_dem()
+    start = latlon_for_rowcol(dem, 5, 5)
+    end = latlon_for_rowcol(dem, 5, 30)
+
+    result = suggest_route(dem, [start, end], RouteOptions())
+
+    assert result["search_stats"]["auto_endpoint"] is False
+
+
+def test_raises_when_start_point_is_already_lowest_point():
+    dem = make_tilted_plane_dem()
+    start = latlon_for_rowcol(dem, 39, 0)
+
+    with pytest.raises(RoutingError, match="allerede det laveste punktet"):
+        suggest_route(dem, [start], RouteOptions())
+
+
+def test_raises_when_no_waypoints_given():
+    dem = make_flat_dem()
+    with pytest.raises(RoutingError, match="minst et startpunkt"):
+        suggest_route(dem, [], RouteOptions())

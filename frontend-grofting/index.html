@@ -62,6 +62,15 @@
           mellompunkt for å styre traséen unna steiner, bygninger eller eiendomsgrenser, og til
           slutt utløpspunktet (bekk, kum, eksisterende grøft). Siste klikk blir alltid utløpet.
         </p>
+        <label id="auto-endpoint-label">
+          <input type="checkbox" id="auto-endpoint-checkbox" />
+          La algoritmen foreslå utløpspunkt automatisk (klikk bare startpunkt)
+        </label>
+        <p class="hint" id="auto-endpoint-hint" hidden>
+          Foreslår laveste punkt i kartutsnittet som utløp - fysisk fornuftig gjetning siden
+          vann uansett søker dit, men verktøyet vet ikke om det faktisk finnes en bekk/kum/grøft
+          der i virkeligheten. <strong>Bekreft alltid i felt før graving.</strong>
+        </p>
         <div id="picked-points">Start: – &nbsp; Slutt: –</div>
         <button type="button" id="undo-point">Angre siste punkt</button>
         <button type="button" id="reset-points">Nullstill punkter</button>

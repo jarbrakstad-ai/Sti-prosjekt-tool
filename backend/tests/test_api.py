@@ -99,6 +99,36 @@ def test_suggest_endpoint_end_to_end(tmp_path):
     assert "analysis" in body
 
 
+def test_suggest_endpoint_with_single_waypoint_auto_suggests_endpoint(tmp_path):
+    dem_bytes = make_geotiff_bytes(tmp_path)
+    start_lat, start_lon = latlon_for_xy(500100, 6599825)
+
+    res = client.post(
+        "/api/suggest",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+        data={
+            "waypoints_json": json.dumps([[start_lat, start_lon]]),
+            "trail_type": "flow",
+            "target_grade_pct": 1.0,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["search_stats"]["auto_endpoint"] is True
+    assert len(body["points"]) >= 2
+
+
+def test_suggest_endpoint_rejects_empty_waypoints(tmp_path):
+    dem_bytes = make_geotiff_bytes(tmp_path)
+
+    res = client.post(
+        "/api/suggest",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+        data={"waypoints_json": json.dumps([])},
+    )
+    assert res.status_code == 400
+
+
 def test_terrain_grid_endpoint_end_to_end(tmp_path):
     dem_bytes = make_geotiff_bytes(tmp_path)
 
