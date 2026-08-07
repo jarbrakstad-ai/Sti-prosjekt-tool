@@ -296,6 +296,15 @@ python -m http.server 5174
 # åpne http://localhost:5174
 ```
 
+Rapporten viser, i tillegg til lengde/fall-sammendrag og GPS-punktliste:
+- **Merknader**: enkle fall-baserte observasjoner (for slakt/bratt et sted).
+- **Oppbyggingsforslag**: konkrete byggeråd ut fra
+  [NLR (Norsk Landbruksrådgiving) sin veiledning om drenering og åpne kanaler](https://www.nlr.no/kunnskap/fagartikler/hydroteknikk/korn/drenering) -
+  rørdimensjon (basert på traséens faktiske snittfall/lengde), grøftedybde,
+  kapasitet, grøfteavstand, utløpsutforming og sidehelning i åpen kanal. Se
+  `buildConstructionSuggestions()` i `frontend-grofting/app.js` for kildehenvisning
+  og terskelverdier.
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er
@@ -303,6 +312,9 @@ Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensn
   stedet enkle, egne fall-baserte merknader (se `TOO_FLAT_PCT`/`STEEP_WARN_PCT`/
   `STEEP_BAD_PCT` i `frontend-grofting/app.js`) – grove tommelfingerregler, ikke
   autoritative ingeniørverdier.
+- Oppbyggingsforslagene mangler areal/nedbørsfelt (kapasitet) og jordart
+  (grøfteavstand, sidehelning, rørdimensjon) som egne datainnhentinger – disse
+  vises som generell referanseinfo, ikke beregnet spesifikt for ditt jorde.
 - Tar **ikke hensyn til grunnforhold** (jordart, dybde til fjell) – kun høydedata.
   Et NIBIO jordsmonnkart-lag (WMS) er lagt til som eksperimentelt kartlag
   (`layer-jordsmonn`), men det nøyaktige WMS-lagnavnet er ikke verifisert mot en

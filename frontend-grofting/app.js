@@ -8,6 +8,17 @@ const TOO_FLAT_PCT = 0.3;
 const STEEP_WARN_PCT = 5.0;
 const STEEP_BAD_PCT = 10.0;
 
+// Rørdimensjonerings-terskler fra NLR (Norsk Landbruksrådgiving) sin
+// veiledning om drenering: https://www.nlr.no/kunnskap/fagartikler/hydroteknikk/korn/drenering
+// - Standard er Ø60/50 mm sugegrøft / Ø100/83 mm samlegrøft.
+// - Under 0,33 % fall: øk til Ø110/97 mm i sugegrøft.
+// - Under 0,25 % fall: øk dimensjonen ytterligere.
+// - Under 0,5 % fall, eller lengde over 200 m: vurder oppgradert dimensjon uansett.
+const PIPE_UPSIZE_PCT_A = 0.33;
+const PIPE_UPSIZE_PCT_B = 0.25;
+const PIPE_UPSIZE_CAUTION_PCT = 0.5;
+const PIPE_UPSIZE_LENGTH_M = 200;
+
 function gradeSeverity(gradePct) {
   const g = Math.abs(gradePct);
   if (g < TOO_FLAT_PCT) return "warn"; // kan bli stående vann
@@ -181,10 +192,60 @@ function buildDrainageNotes(segments) {
   return notes;
 }
 
+/** Konkrete oppbyggingsforslag ut fra beste praksis for norsk jordbruksdrenering
+ * (NLR - Norsk Landbruksrådgiving), tilpasset traséens faktiske fallprofil.
+ * Kilder: nlr.no/kunnskap/fagartikler/hydroteknikk (drenering, avskjæringsgrøfter
+ * og åpne kanaler). Grove tommelfingerregler for et startpunkt - endelig
+ * dimensjonering bør gjøres av NLR/fagperson, spesielt for nedbørsfelt-areal
+ * (kapasitet) og jordart (grøfteavstand, sidehelning), som dette verktøyet
+ * ikke kjenner til. */
+function buildConstructionSuggestions(summary) {
+  const avgGrade = Math.abs(summary.avg_grade_pct);
+  const suggestions = [];
+
+  if (avgGrade < PIPE_UPSIZE_PCT_B) {
+    suggestions.push(
+      `Snittfallet (${summary.avg_grade_pct} %) er under ${PIPE_UPSIZE_PCT_B} % - vurder en grovere rørdimensjon ` +
+        "enn standard Ø60/50 mm sugegrøft/Ø100/83 mm samlegrøft for å unngå gjengroing/sedimentering."
+    );
+  } else if (avgGrade < PIPE_UPSIZE_PCT_A) {
+    suggestions.push(
+      `Snittfallet (${summary.avg_grade_pct} %) er under ${PIPE_UPSIZE_PCT_A} % - vurder å øke til Ø110/97 mm i sugegrøft ` +
+        "fremfor standarddimensjon."
+    );
+  }
+  if (avgGrade < PIPE_UPSIZE_CAUTION_PCT || summary.total_length_m > PIPE_UPSIZE_LENGTH_M) {
+    suggestions.push(
+      `Lavt fall og/eller lang trasé (${summary.total_length_m} m, grense ${PIPE_UPSIZE_LENGTH_M} m) - vurder oppgradert ` +
+        "rørdimensjon uansett, og planlegg for jevnlig spyling/vedlikehold."
+    );
+  }
+  suggestions.push(
+    "Grøftedybde: vanlig praksis er 1,0–1,2 m til drensrør (med filtermasse rundt røret)."
+  );
+  suggestions.push(
+    "Kapasitet: dimensjoner grøfta for ca. 1–1,5 l/sek. pr. hektar nedbørsfelt (avhenger av areal - " +
+      "ikke beregnet av dette verktøyet)."
+  );
+  suggestions.push(
+    "Grøfteavstand mellom parallelle sugegrøfter (for hele jordet, ikke bare denne linja): typisk 6–8 m på tett/leirholdig " +
+      "jord, opp mot 20–25 m på grus - avhenger av jordart (se ev. jordsmonn-laget i kartet)."
+  );
+  suggestions.push(
+    "Utløp: rør som munner i åpen kanal/bekk bør stikke 30–40 cm ut i kanalen, gjerne slik at vannet treffer vannspeilet - " +
+      "hindrer graving/erosjon ved utløpet."
+  );
+  suggestions.push(
+    "Åpen kanal (ikke rørlagt): sidehelning bør være slakere enn ca. 1:1,25 på leire, 1:1,5 på sand/silt og 1:2,0 på finsand."
+  );
+  return suggestions;
+}
+
 function renderReport(result, { suggested } = {}) {
   const s = result.summary;
   const report = document.getElementById("report");
   const notes = buildDrainageNotes(result.segments || []);
+  const construction = buildConstructionSuggestions(s);
   report.innerHTML = `
     ${suggested ? "<h2>Foreslått grøftetrasé</h2><p class=\"hint\">Heuristisk forslag - bekreft i felt og vurder grunnforhold (jordart) før graving.</p>" : ""}
     <h2>Sammendrag</h2>
@@ -196,6 +257,10 @@ function renderReport(result, { suggested } = {}) {
     </table>
     <h2>Merknader</h2>
     <ul>${notes.map((n) => `<li>${n}</li>`).join("")}</ul>
+    <h2>Oppbyggingsforslag</h2>
+    <p class="hint">Basert på NLRs veiledning for drenering/åpne kanaler. Grove tommelfingerregler - endelig
+      dimensjonering bør gjøres av NLR eller annen fagperson, spesielt for areal/kapasitet og jordart.</p>
+    <ul>${construction.map((c) => `<li>${c}</li>`).join("")}</ul>
     ${renderWaypointsTable(result.waypoints)}
   `;
   renderWaypointMarkers(result.waypoints);
