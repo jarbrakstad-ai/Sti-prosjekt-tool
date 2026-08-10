@@ -414,6 +414,18 @@ jordart). Se `findNearbyFieldNotesWithDepth()`/`blendedLosMasse()` i
 håndberegnede eksempler, inkludert grensetilfellene "fjell ikke nådd" og "fjell i
 dagen").
 
+**Anbefalte prøvepunkter for bonitering**: rapporten (seksjonen "Anbefalte
+prøvepunkter for bonitering") og kartlaget "Anbefalte prøvepunkter" foreslår hvor
+langs traséen du bør prøvegrave, ikke bare at du bør gjøre det. Punktene er jevnt
+fordelt hver 30 m (`PROBE_SPACING_M`) langs traséen, alltid med start- og
+sluttpunkt, og markeres grønt/heltrukket i kartet hvis et feltnotat med målt
+fjelldybde allerede finnes innen 15 m, ellers rødt/stiplet. Rapporten oppsummerer
+hvor mange av punktene som fortsatt mangler data. Dette gir jevnere datadekning
+til masseberegningen over enn å stole på at brukeren tilfeldigvis gravde et sted
+med representative forhold. Se `suggestProbePoints()`/`pointAtDistance()` i
+`frontend-grofting/app.js` (verifisert numerisk: punktavstand langs traséen,
+lineær interpolasjon mellom waypoints, og dekningssjekk mot feltnotater).
+
 ### Planering (areal-basert kutt/fyll)
 
 Ny fane ("Planering (kutt/fyll)") som svarer på et annet spørsmål enn både

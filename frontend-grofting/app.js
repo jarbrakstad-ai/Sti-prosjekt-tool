@@ -59,6 +59,7 @@ const depressionLayer = L.layerGroup().addTo(map);
 const fieldNotesLayer = L.layerGroup().addTo(map);
 const gradingCanvasRenderer = L.canvas({ padding: 0.5 });
 const gradingLayer = L.layerGroup().addTo(map);
+const probePointsLayer = L.layerGroup().addTo(map);
 
 const LAYER_BY_CHECKBOX = {
   "layer-trail-lines": trailLineLayer,
@@ -69,6 +70,7 @@ const LAYER_BY_CHECKBOX = {
   "layer-depressions": depressionLayer,
   "layer-field-notes": fieldNotesLayer,
   "layer-grading": gradingLayer,
+  "layer-probe-points": probePointsLayer,
 };
 
 for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
@@ -343,6 +345,82 @@ function buildMassCalculation(summary, jordart, massType, routeLatLon) {
   };
 }
 
+const PROBE_SPACING_M = 30; // avstand mellom anbefalte prøvepunkter langs traséen
+
+function geoDistanceM(lat1, lon1, lat2, lon2) {
+  const { mPerDegLat, mPerDegLon } = metersPerDegree((lat1 + lat2) / 2);
+  const dy = (lat2 - lat1) * mPerDegLat;
+  const dx = (lon2 - lon1) * mPerDegLon;
+  return Math.hypot(dx, dy);
+}
+
+/** Finner punktet på traséen (waypoints med lat/lon/distance_from_start_m)
+ * som ligger targetDist meter fra start, ved lineær interpolasjon mellom de
+ * to nærmeste waypointene. */
+function pointAtDistance(waypoints, targetDist) {
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const d0 = waypoints[i].distance_from_start_m;
+    const d1 = waypoints[i + 1].distance_from_start_m;
+    if (targetDist >= d0 && targetDist <= d1) {
+      const t = d1 > d0 ? (targetDist - d0) / (d1 - d0) : 0;
+      return {
+        lat: waypoints[i].lat + t * (waypoints[i + 1].lat - waypoints[i].lat),
+        lon: waypoints[i].lon + t * (waypoints[i + 1].lon - waypoints[i].lon),
+        distanceFromStart: targetDist,
+      };
+    }
+  }
+  const last = waypoints[waypoints.length - 1];
+  return { lat: last.lat, lon: last.lon, distanceFromStart: last.distance_from_start_m };
+}
+
+/** Foreslår punkter langs traséen for prøvegraving/bonitering: jevnt fordelt
+ * (default hver PROBE_SPACING_M meter, alltid start og slutt), slik at
+ * masseberegningen får målt fjelldybde spredt langs hele traséen i stedet
+ * for kun der brukeren tilfeldigvis har gravd. Punkter som allerede er
+ * dekket av et feltnotat med målt fjelldybde innen FIELD_NOTE_MAX_DISTANCE_M
+ * markeres som dekket, slik at brukeren ser hvor det faktisk mangler data. */
+function suggestProbePoints(waypoints, spacingM = PROBE_SPACING_M) {
+  if (!waypoints || waypoints.length < 2) return [];
+  const totalLength = waypoints[waypoints.length - 1].distance_from_start_m;
+  if (!(totalLength > 0)) return [];
+  const notesWithDepth = fieldNotes.filter((n) => typeof n.depthToRockM === "number");
+
+  const targets = [0];
+  for (let d = spacingM; d < totalLength; d += spacingM) targets.push(d);
+  targets.push(totalLength);
+
+  return targets.map((d) => {
+    const pt = pointAtDistance(waypoints, d);
+    const covered = notesWithDepth.some(
+      (n) => geoDistanceM(n.lat, n.lon, pt.lat, pt.lon) <= FIELD_NOTE_MAX_DISTANCE_M
+    );
+    return { ...pt, covered };
+  });
+}
+
+function renderProbePoints(waypoints) {
+  probePointsLayer.clearLayers();
+  const points = suggestProbePoints(waypoints);
+  for (const pt of points) {
+    const marker = L.circleMarker([pt.lat, pt.lon], {
+      radius: 6,
+      color: pt.covered ? "#2e7d32" : "#c62828",
+      fillColor: pt.covered ? "#2e7d32" : "#c62828",
+      fillOpacity: pt.covered ? 0.5 : 0.9,
+      weight: 2,
+      dashArray: pt.covered ? null : "3,2",
+    }).addTo(probePointsLayer);
+    marker.bindPopup(
+      `<strong>Anbefalt prøvepunkt</strong><br>Ca. ${Math.round(pt.distanceFromStart)} m fra start<br>` +
+        (pt.covered
+          ? "Allerede dekket av et feltnotat med målt fjelldybde i nærheten."
+          : "Ingen målt fjelldybde i nærheten ennå - vurder prøvegraving her og legg inn feltnotat.")
+    );
+  }
+  return points;
+}
+
 const SIDE_SLOPE_RATIO_BY_JORDART = { leire: 1.25, sand_silt: 1.5, finsand: 2.0 };
 const SIDE_SLOPE_LABEL_BY_JORDART = { leire: "leire", sand_silt: "sand/silt", finsand: "finsand" };
 
@@ -427,6 +505,23 @@ function renderReport(result, { suggested } = {}) {
         (snitt ${mass.avgRockDepthM.toFixed(2)} m). Rørlagt grøft: ${(mass.trenchRockFraction * 100).toFixed(0)} % av gravedybden
         antas å være fjell/stein. Åpen kanal: ${(mass.channelRockFraction * 100).toFixed(0)} %.</p>`
     : `<p class="hint">Ingen feltnotater med målt fjelldybde funnet nær traséen - bruker kun valgt jordart (× ${mass.factor}) for hele dybden.</p>`;
+  const probePoints = renderProbePoints(result.waypoints || []);
+  const missingProbes = probePoints.filter((p) => !p.covered);
+  const probeSection = probePoints.length
+    ? `
+    <h2>Anbefalte prøvepunkter for bonitering</h2>
+    <p class="hint">Foreslåtte punkter langs traséen for prøvegraving (ca. hver ${PROBE_SPACING_M} m, alltid start og
+      slutt), slik at målt fjelldybde blir spredt jevnt langs hele strekket i stedet for kun der du tilfeldigvis har
+      gravd. Vises også som punkter i kartet (lag "Anbefalte prøvepunkter") - grønn/heltrukket = allerede dekket av
+      et feltnotat med målt dybde, rød/stiplet = mangler data.
+      ${missingProbes.length ? `<strong>${missingProbes.length} av ${probePoints.length} punkter mangler data.</strong>` : `Alle ${probePoints.length} punkter er dekket.`}</p>
+    <ul>${probePoints
+      .map(
+        (p) =>
+          `<li>${Math.round(p.distanceFromStart)} m fra start - ${p.covered ? "dekket" : "mangler målt fjelldybde"}</li>`
+      )
+      .join("")}</ul>`
+    : "";
   report.innerHTML = `
     ${suggested ? "<h2>Foreslått grøftetrasé</h2><p class=\"hint\">Heuristisk forslag - bekreft i felt og vurder grunnforhold (jordart) før graving.</p>" : ""}
     <h2>Sammendrag</h2>
@@ -458,6 +553,7 @@ function renderReport(result, { suggested } = {}) {
     </table>
     <h2>Profiltegning</h2>
     ${profileDrawing}
+    ${probeSection}
     ${renderWaypointsTable(result.waypoints)}
   `;
   renderWaypointMarkers(result.waypoints);
@@ -554,6 +650,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     waypointLayer.clearLayers();
     depressionLayer.clearLayers();
     gradingLayer.clearLayers();
+    probePointsLayer.clearLayers();
   });
 });
 
@@ -855,6 +952,7 @@ function renderFieldNotes() {
           fieldNotes = fieldNotes.filter((n) => n.id !== note.id);
           persistFieldNotes();
           renderFieldNotes();
+          rerenderLastReport();
           map.closePopup();
         });
       }
@@ -875,6 +973,7 @@ function saveFieldNote(lat, lon, category, text, depthToRockM) {
   });
   persistFieldNotes();
   renderFieldNotes();
+  rerenderLastReport();
 }
 
 function openFieldNoteForm(lat, lon) {
