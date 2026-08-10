@@ -364,16 +364,19 @@ høydedata alene, kan du legge inn egne observasjoner **etter en faktisk befarin
 
 - **"📝 Legg til feltnotat"**-knappen (nede til høyre på kartet, alle moduser) - klikk
   knappen, så et sted i kartet, og et lite skjema åpnes for kategori (fjell i
-  dagen/stein, myr/våtmark, leire/tett jord, tørr/fast grunn, annet) og fritekst.
+  dagen/stein, myr/våtmark, leire/tett jord, tørr/fast grunn, annet), fritekst og en
+  valgfri **målt dybde til fast fjell/undergrunn** (m), f.eks. fra prøvegraving.
 - **"📝 Notat her"** i "Følg trasé i felt"-visningen - registrerer notatet på din
-  *nåværende GPS-posisjon* direkte mens du går befaringen, uten å måtte klikke i kartet.
+  *nåværende GPS-posisjon* direkte mens du går befaringen, uten å måtte klikke i kartet,
+  med samme valgfrie dybdefelt.
 
 Notatene lagres i nettleserens localStorage (samme mønster som "Sammenlign
 alternativer" - følger ikke med hvis du bytter enhet/nettleser), vises som fargede
 punkter i kartet (lag "Feltnotater (grunnforhold)"), og kan slettes fra egen popup.
 Notatene er knyttet til *stedet*, ikke til én bestemt foreslått trasé, og vises uansett
 hvilken modus/trasé du har lastet. Se `FIELD_NOTE_CATEGORIES`/`saveFieldNote()` i
-`frontend-grofting/app.js`.
+`frontend-grofting/app.js`. Den målte dybden brukes videre i **Masseberegning**
+under, se nedenfor.
 
 ### Masseberegning
 
@@ -394,6 +397,22 @@ tommelfingerregel. Grovt overslag, ikke NS 3420-presist - egnet til å anslå
 lastebilbehov/kostnadsstørrelsesorden, ikke som grunnlag for anbud. Se
 `buildMassCalculation()`/`MASS_BULKING_FACTORS` i `frontend-grofting/app.js`
 (regnestykket er verifisert numerisk mot håndberegnede tverrsnittsareal).
+
+**Kombinert med målt fjelldybde fra feltnotater**: hvis du har lagt inn feltnotater
+med målt dybde til fast fjell (se Feltnotater over) innen 15 m fra traséen, blander
+beregningen automatisk om løs-masse-faktoren - i stedet for å anta at hele
+gravedybden er den valgte jordarten. Snittet av nærliggende målte fjelldybder
+avgjør hvor stor andel av gravedybden (rørgrøft: input-dybde, kanal: 0,8 m) som
+antas å være fjell/stein (× 2,0) kontra den valgte jordarten - resten av dybden
+bruker fortsatt jordartens faktor. "Fast masse" (volumet slik det ligger i bakken)
+er uendret, siden det er rent geometrisk og ikke avhenger av materialtype - kun
+"løs masse" (etter oppgraving) blir justert. Rapporten viser hvor mange
+feltnotater som ble brukt og hvor stor andel fjell som ble lagt til grunn. Ingen
+nærliggende notater med dybde → beregningen er identisk med før (kun valgt
+jordart). Se `findNearbyFieldNotesWithDepth()`/`blendedLosMasse()` i
+`frontend-grofting/app.js` (blandingsmatematikken er verifisert numerisk mot
+håndberegnede eksempler, inkludert grensetilfellene "fjell ikke nådd" og "fjell i
+dagen").
 
 ### Planering (areal-basert kutt/fyll)
 

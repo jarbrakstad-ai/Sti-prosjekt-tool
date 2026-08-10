@@ -263,13 +263,49 @@ const MASS_BULKING_FACTORS = {
 const CHANNEL_DEPTH_M = 0.8; // typisk dybde for en åpen jordbruksgrøft
 const CHANNEL_BOTTOM_WIDTH_M = 0.4;
 
+const FIELD_NOTE_MAX_DISTANCE_M = 15;
+
+/** Finner feltnotater med oppgitt målt fjelldybde som ligger innenfor
+ * maxDistanceM fra traséen (avstand via nearestPointOnRoute). Brukes til å
+ * la faktiske feltmålinger justere masseberegningen i stedet for å anta én
+ * jordart/dybde langs hele traséen. */
+function findNearbyFieldNotesWithDepth(routeLatLon, maxDistanceM = FIELD_NOTE_MAX_DISTANCE_M) {
+  if (!routeLatLon || routeLatLon.length < 2) return [];
+  const notesWithDepth = fieldNotes.filter((n) => typeof n.depthToRockM === "number");
+  const nearby = [];
+  for (const note of notesWithDepth) {
+    const nearest = nearestPointOnRoute(note.lat, note.lon, routeLatLon, null);
+    if (nearest && nearest.dist <= maxDistanceM) {
+      nearby.push({ note, distanceToRoute: nearest.dist });
+    }
+  }
+  return nearby;
+}
+
+/** Blander løs-masse-beregningen mellom det valgte jordart-laget (over
+ * målt fjell) og fjell/stein-faktoren (under), vektet etter hvor stor andel
+ * av planlagt gravedybde som faktisk er fjell. Hvis fjell ikke er nådd
+ * innenfor planlagt dybde (eller ingen måling finnes), brukes kun den valgte
+ * jordart-faktoren - som før. */
+function blendedLosMasse(fastVolumeTotal, designDepthM, avgRockDepthM, upperFactor) {
+  if (avgRockDepthM === null || avgRockDepthM === undefined || avgRockDepthM >= designDepthM) {
+    return { volume: fastVolumeTotal * upperFactor, rockFraction: 0 };
+  }
+  const rockFraction = Math.max(0, (designDepthM - avgRockDepthM) / designDepthM);
+  const upperFraction = 1 - rockFraction;
+  const rockFactor = MASS_BULKING_FACTORS.fjell_stein;
+  return { volume: fastVolumeTotal * (upperFraction * upperFactor + rockFraction * rockFactor), rockFraction };
+}
+
 /** Beregner utgravd volum ("fast masse", i bakken) og tilsvarende løs masse
  * (etter oppgraving/lasting) for både rørlagt grøft (rektangulært tverrsnitt,
  * bredde x dybde fra input-feltene) og åpen kanal (trapes-tverrsnitt med
  * sidehelning fra jordart-valget). Grov overslagsberegning - endelig
  * massevolum bør beregnes av entreprenør/fagperson ut fra faktisk oppmålt
- * tverrsnitt og grunnforhold. */
-function buildMassCalculation(summary, jordart, massType) {
+ * tverrsnitt og grunnforhold. Hvis feltnotater med målt fjelldybde finnes
+ * nær traséen (routeLatLon), blandes løs-masse-faktoren mellom valgt
+ * jordart og fjell/stein etter hvor mye av gravedybden som er fjell. */
+function buildMassCalculation(summary, jordart, massType, routeLatLon) {
   const length = summary.total_length_m;
   const factor = MASS_BULKING_FACTORS[massType] || MASS_BULKING_FACTORS.jord_sand_grus;
 
@@ -277,23 +313,33 @@ function buildMassCalculation(summary, jordart, massType) {
   const trenchDepth = parseFloat(document.getElementById("trench-depth").value) || 1.1;
   const trenchAreaM2 = trenchWidth * trenchDepth;
   const trenchFastM3 = trenchAreaM2 * length;
-  const trenchLosM3 = trenchFastM3 * factor;
 
   const ratio = SIDE_SLOPE_RATIO_BY_JORDART[jordart] || SIDE_SLOPE_RATIO_BY_JORDART.sand_silt;
   const channelTopWidth = CHANNEL_BOTTOM_WIDTH_M + 2 * ratio * CHANNEL_DEPTH_M;
   const channelAreaM2 = (CHANNEL_BOTTOM_WIDTH_M + channelTopWidth) / 2 * CHANNEL_DEPTH_M;
   const channelFastM3 = channelAreaM2 * length;
-  const channelLosM3 = channelFastM3 * factor;
+
+  const nearbyNotes = findNearbyFieldNotesWithDepth(routeLatLon);
+  const avgRockDepthM = nearbyNotes.length
+    ? nearbyNotes.reduce((sum, n) => sum + n.note.depthToRockM, 0) / nearbyNotes.length
+    : null;
+
+  const trenchBlend = blendedLosMasse(trenchFastM3, trenchDepth, avgRockDepthM, factor);
+  const channelBlend = blendedLosMasse(channelFastM3, CHANNEL_DEPTH_M, avgRockDepthM, factor);
 
   return {
     factor,
     trenchWidth,
     trenchDepth,
     trenchFastM3,
-    trenchLosM3,
+    trenchLosM3: trenchBlend.volume,
     channelAreaM2,
     channelFastM3,
-    channelLosM3,
+    channelLosM3: channelBlend.volume,
+    nearbyNoteCount: nearbyNotes.length,
+    avgRockDepthM,
+    trenchRockFraction: trenchBlend.rockFraction,
+    channelRockFraction: channelBlend.rockFraction,
   };
 }
 
@@ -374,7 +420,13 @@ function renderReport(result, { suggested } = {}) {
   const jordart = document.getElementById("jordart-select").value;
   const massType = document.getElementById("mass-type-select").value;
   const profileDrawing = buildProfileDrawing(s, jordart);
-  const mass = buildMassCalculation(s, jordart, massType);
+  const routeLatLon = (result.waypoints || []).map((w) => [w.lat, w.lon]);
+  const mass = buildMassCalculation(s, jordart, massType, routeLatLon);
+  const massDepthNote = mass.nearbyNoteCount
+    ? `<p class="hint">Justert med målt fjelldybde fra ${mass.nearbyNoteCount} feltnotat(er) innen ${FIELD_NOTE_MAX_DISTANCE_M} m fra traséen
+        (snitt ${mass.avgRockDepthM.toFixed(2)} m). Rørlagt grøft: ${(mass.trenchRockFraction * 100).toFixed(0)} % av gravedybden
+        antas å være fjell/stein. Åpen kanal: ${(mass.channelRockFraction * 100).toFixed(0)} %.</p>`
+    : `<p class="hint">Ingen feltnotater med målt fjelldybde funnet nær traséen - bruker kun valgt jordart (× ${mass.factor}) for hele dybden.</p>`;
   report.innerHTML = `
     ${suggested ? "<h2>Foreslått grøftetrasé</h2><p class=\"hint\">Heuristisk forslag - bekreft i felt og vurder grunnforhold (jordart) før graving.</p>" : ""}
     <h2>Sammendrag</h2>
@@ -394,6 +446,7 @@ function renderReport(result, { suggested } = {}) {
     <p class="hint">Grovt anslag - omregningsfaktor fast → løs masse er en generell tommelfingerregel
       (NVE Sikringshåndboka / vanlig anleggspraksis), ikke NS 3420-presis. Løs masse er det som
       faktisk avgjør antall lastebillass.</p>
+    ${massDepthNote}
     <table>
       <tr><td>Tverrsnitt rørlagt grøft (${mass.trenchWidth} m × ${mass.trenchDepth} m)</td><td>${(mass.trenchWidth * mass.trenchDepth).toFixed(2)} m²</td></tr>
       <tr><td>Fast masse, rørlagt grøft</td><td>${mass.trenchFastM3.toFixed(1)} m³</td></tr>
@@ -781,6 +834,8 @@ function renderFieldNotes() {
   for (const note of fieldNotes) {
     const meta = FIELD_NOTE_CATEGORIES[note.category] || FIELD_NOTE_CATEGORIES.annet;
     const dateStr = new Date(note.timestamp).toLocaleDateString("no-NO");
+    const depthLine =
+      typeof note.depthToRockM === "number" ? `<br>Målt dybde til fast fjell/undergrunn: ${note.depthToRockM} m` : "";
     const marker = L.circleMarker([note.lat, note.lon], {
       radius: 7,
       color: meta.color,
@@ -789,7 +844,7 @@ function renderFieldNotes() {
       weight: 2,
     }).addTo(fieldNotesLayer);
     marker.bindPopup(
-      `<strong>${meta.label}</strong><br>${note.text ? escapeHtml(note.text) : "(ingen tekst)"}<br>` +
+      `<strong>${meta.label}</strong><br>${note.text ? escapeHtml(note.text) : "(ingen tekst)"}${depthLine}<br>` +
         `<span class="hint">${dateStr}</span><br>` +
         `<button type="button" class="fn-delete-btn" data-id="${note.id}">Slett notat</button>`
     );
@@ -808,13 +863,14 @@ function renderFieldNotes() {
 }
 renderFieldNotes();
 
-function saveFieldNote(lat, lon, category, text) {
+function saveFieldNote(lat, lon, category, text, depthToRockM) {
   fieldNotes.push({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     lat,
     lon,
     category,
     text,
+    depthToRockM: typeof depthToRockM === "number" && !Number.isNaN(depthToRockM) ? depthToRockM : null,
     timestamp: Date.now(),
   });
   persistFieldNotes();
@@ -834,6 +890,9 @@ function openFieldNoteForm(lat, lon) {
       <label>Notat
         <textarea class="fn-text" rows="2" placeholder="Valgfritt"></textarea>
       </label>
+      <label>Målt dybde til fast fjell/undergrunn, m (valgfritt)
+        <input type="number" class="fn-depth" step="0.1" min="0" placeholder="F.eks. fra prøvegraving" />
+      </label>
       <button type="button" class="fn-save-btn">Lagre notat</button>
     </div>`;
   const popup = L.popup().setLatLng([lat, lon]).setContent(html).openOn(map);
@@ -843,7 +902,8 @@ function openFieldNoteForm(lat, lon) {
     saveBtn.addEventListener("click", () => {
       const category = el.querySelector(".fn-category").value;
       const text = el.querySelector(".fn-text").value.trim();
-      saveFieldNote(lat, lon, category, text);
+      const depth = parseFloat(el.querySelector(".fn-depth").value);
+      saveFieldNote(lat, lon, category, text, depth);
       map.closePopup(popup);
     });
   });
@@ -1678,8 +1738,10 @@ document.getElementById("follow-gps-note-save").addEventListener("click", () => 
   if (!followGpsLastLatLng) return;
   const category = document.getElementById("follow-gps-note-category").value;
   const text = document.getElementById("follow-gps-note-text").value.trim();
-  saveFieldNote(followGpsLastLatLng.lat, followGpsLastLatLng.lon, category, text);
+  const depth = parseFloat(document.getElementById("follow-gps-note-depth").value);
+  saveFieldNote(followGpsLastLatLng.lat, followGpsLastLatLng.lon, category, text, depth);
   document.getElementById("follow-gps-note-text").value = "";
+  document.getElementById("follow-gps-note-depth").value = "";
   document.getElementById("follow-gps-note-panel").hidden = true;
   setFollowGpsStatus("Notat lagret på gjeldende posisjon.");
 });
