@@ -56,6 +56,7 @@ const markerLayer = L.layerGroup().addTo(map);
 const waypointLayer = L.layerGroup(); // av som standard
 const compareLayer = L.layerGroup().addTo(map);
 const depressionLayer = L.layerGroup().addTo(map);
+const fieldNotesLayer = L.layerGroup().addTo(map);
 
 const LAYER_BY_CHECKBOX = {
   "layer-trail-lines": trailLineLayer,
@@ -64,6 +65,7 @@ const LAYER_BY_CHECKBOX = {
   "layer-compare": compareLayer,
   "layer-jordsmonn": jordsmonnLayer,
   "layer-depressions": depressionLayer,
+  "layer-field-notes": fieldNotesLayer,
 };
 
 for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
@@ -661,7 +663,132 @@ function updatePickedPointsLabel() {
     .join("   ");
 }
 
+// ---- Feltnotater (grunnforhold observert i felt, lagt inn etter befaring) ----
+// Egen lokasjonsbasert lagring (localStorage) - notatene er knyttet til
+// stedet, ikke til én bestemt foreslått trasé, og vises uansett modus.
+const FIELD_NOTES_KEY = "grofteplanlegger-field-notes-v1";
+const FIELD_NOTE_CATEGORIES = {
+  fjell: { label: "Fjell i dagen/stein", color: "#616161" },
+  myr: { label: "Myr/våtmark", color: "#6d4c41" },
+  leire: { label: "Leire/tett jord", color: "#8a5a2b" },
+  torr: { label: "Tørr/fast grunn", color: "#7cb342" },
+  annet: { label: "Annet", color: "#455a64" },
+};
+
+function loadFieldNotes() {
+  try {
+    const raw = localStorage.getItem(FIELD_NOTES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistFieldNotes() {
+  try {
+    localStorage.setItem(FIELD_NOTES_KEY, JSON.stringify(fieldNotes));
+  } catch {
+    // localStorage utilgjengelig - fortsetter uten lagring
+  }
+}
+
+let fieldNotes = loadFieldNotes();
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderFieldNotes() {
+  fieldNotesLayer.clearLayers();
+  for (const note of fieldNotes) {
+    const meta = FIELD_NOTE_CATEGORIES[note.category] || FIELD_NOTE_CATEGORIES.annet;
+    const dateStr = new Date(note.timestamp).toLocaleDateString("no-NO");
+    const marker = L.circleMarker([note.lat, note.lon], {
+      radius: 7,
+      color: meta.color,
+      fillColor: meta.color,
+      fillOpacity: 0.85,
+      weight: 2,
+    }).addTo(fieldNotesLayer);
+    marker.bindPopup(
+      `<strong>${meta.label}</strong><br>${note.text ? escapeHtml(note.text) : "(ingen tekst)"}<br>` +
+        `<span class="hint">${dateStr}</span><br>` +
+        `<button type="button" class="fn-delete-btn" data-id="${note.id}">Slett notat</button>`
+    );
+    marker.on("popupopen", (ev) => {
+      const btn = ev.popup.getElement().querySelector(".fn-delete-btn");
+      if (btn) {
+        btn.addEventListener("click", () => {
+          fieldNotes = fieldNotes.filter((n) => n.id !== note.id);
+          persistFieldNotes();
+          renderFieldNotes();
+          map.closePopup();
+        });
+      }
+    });
+  }
+}
+renderFieldNotes();
+
+function saveFieldNote(lat, lon, category, text) {
+  fieldNotes.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    lat,
+    lon,
+    category,
+    text,
+    timestamp: Date.now(),
+  });
+  persistFieldNotes();
+  renderFieldNotes();
+}
+
+function openFieldNoteForm(lat, lon) {
+  const options = Object.entries(FIELD_NOTE_CATEGORIES)
+    .map(([key, meta]) => `<option value="${key}">${meta.label}</option>`)
+    .join("");
+  const html = `
+    <div class="field-note-form">
+      <strong>Nytt feltnotat</strong>
+      <label>Kategori
+        <select class="fn-category">${options}</select>
+      </label>
+      <label>Notat
+        <textarea class="fn-text" rows="2" placeholder="Valgfritt"></textarea>
+      </label>
+      <button type="button" class="fn-save-btn">Lagre notat</button>
+    </div>`;
+  const popup = L.popup().setLatLng([lat, lon]).setContent(html).openOn(map);
+  popup.on("add", () => {
+    const el = popup.getElement();
+    const saveBtn = el.querySelector(".fn-save-btn");
+    saveBtn.addEventListener("click", () => {
+      const category = el.querySelector(".fn-category").value;
+      const text = el.querySelector(".fn-text").value.trim();
+      saveFieldNote(lat, lon, category, text);
+      map.closePopup(popup);
+    });
+  });
+}
+
+let addingFieldNote = false;
+document.getElementById("add-field-note-btn").addEventListener("click", () => {
+  addingFieldNote = !addingFieldNote;
+  document.getElementById("add-field-note-btn").classList.toggle("active", addingFieldNote);
+  setStatus(addingFieldNote ? "Klikk i kartet for å legge til et feltnotat." : "");
+});
+
 map.on("click", (e) => {
+  if (addingFieldNote) {
+    openFieldNoteForm(e.latlng.lat, e.latlng.lng);
+    addingFieldNote = false;
+    document.getElementById("add-field-note-btn").classList.remove("active");
+    setStatus("");
+    return;
+  }
+
   const isSuggestMode = document.querySelector('input[name="mode"]:checked').value === "suggest";
   if (!isSuggestMode) return;
 
@@ -1284,7 +1411,10 @@ function updateFollowGpsUI(lat, lon, accuracy) {
   }
 }
 
+let followGpsLastLatLng = null;
+
 function onFollowGpsPosition(pos) {
+  followGpsLastLatLng = { lat: pos.coords.latitude, lon: pos.coords.longitude };
   setFollowGpsStatus(`Nøyaktighet: ~${Math.round(pos.coords.accuracy)} m`);
   updateFollowGpsUI(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
 }
@@ -1342,7 +1472,31 @@ function closeFollowGps() {
   followGpsAccuracyCircle = null;
   followGpsConnectorLine = null;
   followGpsRouteLayer = null;
+  followGpsLastLatLng = null;
+  document.getElementById("follow-gps-note-panel").hidden = true;
   document.getElementById("follow-gps-modal").hidden = true;
 }
 
 document.getElementById("follow-gps-close-btn").addEventListener("click", closeFollowGps);
+
+document.getElementById("follow-gps-note-btn").addEventListener("click", () => {
+  if (!followGpsLastLatLng) {
+    setFollowGpsStatus("Venter på posisjon før du kan legge til notat …", true);
+    return;
+  }
+  document.getElementById("follow-gps-note-panel").hidden = false;
+});
+
+document.getElementById("follow-gps-note-cancel").addEventListener("click", () => {
+  document.getElementById("follow-gps-note-panel").hidden = true;
+});
+
+document.getElementById("follow-gps-note-save").addEventListener("click", () => {
+  if (!followGpsLastLatLng) return;
+  const category = document.getElementById("follow-gps-note-category").value;
+  const text = document.getElementById("follow-gps-note-text").value.trim();
+  saveFieldNote(followGpsLastLatLng.lat, followGpsLastLatLng.lon, category, text);
+  document.getElementById("follow-gps-note-text").value = "";
+  document.getElementById("follow-gps-note-panel").hidden = true;
+  setFollowGpsStatus("Notat lagret på gjeldende posisjon.");
+});

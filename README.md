@@ -357,6 +357,24 @@ liste sortert etter størst areal først. **Kjenner ikke til jordart/infiltrasjo
 som også avgjør om et areal faktisk drenerer selv - dette er en heuristisk indikasjon
 basert kun på høydedata, ikke en fasit.
 
+### Feltnotater (grunnforhold observert i felt)
+
+Siden verktøyet ikke kjenner til grunnforhold (jordart, dybde til fjell osv.) fra
+høydedata alene, kan du legge inn egne observasjoner **etter en faktisk befaring**:
+
+- **"📝 Legg til feltnotat"**-knappen (nede til høyre på kartet, alle moduser) - klikk
+  knappen, så et sted i kartet, og et lite skjema åpnes for kategori (fjell i
+  dagen/stein, myr/våtmark, leire/tett jord, tørr/fast grunn, annet) og fritekst.
+- **"📝 Notat her"** i "Følg trasé i felt"-visningen - registrerer notatet på din
+  *nåværende GPS-posisjon* direkte mens du går befaringen, uten å måtte klikke i kartet.
+
+Notatene lagres i nettleserens localStorage (samme mønster som "Sammenlign
+alternativer" - følger ikke med hvis du bytter enhet/nettleser), vises som fargede
+punkter i kartet (lag "Feltnotater (grunnforhold)"), og kan slettes fra egen popup.
+Notatene er knyttet til *stedet*, ikke til én bestemt foreslått trasé, og vises uansett
+hvilken modus/trasé du har lastet. Se `FIELD_NOTE_CATEGORIES`/`saveFieldNote()` i
+`frontend-grofting/app.js`.
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

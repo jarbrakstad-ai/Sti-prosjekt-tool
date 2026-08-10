@@ -617,3 +617,87 @@ button {
   stroke-width: 1.5;
   stroke-dasharray: 4,3;
 }
+
+/* Feltnotater (grunnforhold observert i felt) */
+#add-field-note-btn {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-md);
+}
+#add-field-note-btn:hover { background: var(--color-primary-light); }
+#add-field-note-btn.active { background: var(--color-primary); color: #fff; }
+
+.field-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  min-width: 200px;
+}
+.field-note-form label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; }
+.field-note-form select,
+.field-note-form textarea {
+  font: inherit;
+  padding: 0.3rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+.field-note-form button {
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+#follow-gps-note-btn {
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #e7ede9;
+  font-weight: 600;
+}
+#follow-gps-note-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+#follow-gps-note-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: #1c2320;
+  color: #e7ede9;
+}
+#follow-gps-note-panel label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; }
+#follow-gps-note-panel select,
+#follow-gps-note-panel textarea {
+  font: inherit;
+  padding: 0.4rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #10151a;
+  color: #e7ede9;
+}
+#follow-gps-note-actions { display: flex; gap: 0.5rem; }
+#follow-gps-note-actions button {
+  cursor: pointer;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-weight: 600;
+  border: 1px solid var(--color-primary);
+}
+#follow-gps-note-save { background: var(--color-primary); color: #fff; }
+#follow-gps-note-cancel { background: transparent; color: #e7ede9; border-color: rgba(255, 255, 255, 0.3); }

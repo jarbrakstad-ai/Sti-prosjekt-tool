@@ -150,6 +150,7 @@
         <label><input type="checkbox" id="layer-compare" checked /> Sammenlignede alternativer</label>
         <label><input type="checkbox" id="layer-jordsmonn" /> Jordsmonn (NIBIO, eksperimentell)</label>
         <label><input type="checkbox" id="layer-depressions" checked /> Søkk/lavpunkter</label>
+        <label><input type="checkbox" id="layer-field-notes" checked /> Feltnotater (grunnforhold)</label>
       </div>
       <div id="legend">
         <span class="dot ok"></span> Godt fall (drenerer, lav erosjonsrisiko)
@@ -161,6 +162,7 @@
         Jordsmonn-laget er eksperimentelt og ikke fullt verifisert ennå – dekker uansett bare
         deler av Norge (mest Østlandet, Trøndelag, Jæren). Bruk som en pekepinn, ikke fasit.
       </p>
+      <button type="button" id="add-field-note-btn">📝 Legg til feltnotat (klikk i kartet)</button>
     </section>
   </main>
 
@@ -181,6 +183,7 @@
     <div id="follow-gps-toolbar">
       <strong>📍 Følg trasé i felt</strong>
       <span id="follow-gps-status" class="hint"></span>
+      <button type="button" id="follow-gps-note-btn">📝 Notat her</button>
       <button type="button" id="follow-gps-close-btn">✕ Lukk</button>
     </div>
     <div id="follow-gps-info">
@@ -195,6 +198,23 @@
       <div class="follow-gps-metric">
         <span class="follow-gps-metric-label">Fremdrift</span>
         <span class="follow-gps-metric-value" id="follow-gps-progress">–</span>
+      </div>
+    </div>
+    <div id="follow-gps-note-panel" hidden>
+      <label>
+        Kategori
+        <select id="follow-gps-note-category">
+          <option value="fjell">Fjell i dagen/stein</option>
+          <option value="myr">Myr/våtmark</option>
+          <option value="leire">Leire/tett jord</option>
+          <option value="torr">Tørr/fast grunn</option>
+          <option value="annet">Annet</option>
+        </select>
+      </label>
+      <textarea id="follow-gps-note-text" rows="2" placeholder="Notat (valgfritt)"></textarea>
+      <div id="follow-gps-note-actions">
+        <button type="button" id="follow-gps-note-save">Lagre notat her</button>
+        <button type="button" id="follow-gps-note-cancel">Avbryt</button>
       </div>
     </div>
     <div id="follow-gps-map-wrapper"></div>
