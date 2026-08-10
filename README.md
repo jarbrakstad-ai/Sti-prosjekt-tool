@@ -395,6 +395,37 @@ lastebilbehov/kostnadsstørrelsesorden, ikke som grunnlag for anbud. Se
 `buildMassCalculation()`/`MASS_BULKING_FACTORS` i `frontend-grofting/app.js`
 (regnestykket er verifisert numerisk mot håndberegnede tverrsnittsareal).
 
+### Planering (areal-basert kutt/fyll)
+
+Ny fane ("Planering (kutt/fyll)") som svarer på et annet spørsmål enn både
+grøfteforslaget og selvdrenerings-sjekken: *hvor mye masse må flyttes for å gjøre hele
+jordet flatt eller jevnt hellende* - polygon-/areal-basert i stedet for linje-basert.
+Bruker hele det innlastede kartutsnittet (samme "ingen egen områdemarkering
+nødvendig"-mønster som selvdrenerings-sjekken).
+
+Metode (`backend/app/grading.py`, `POST /api/dem/grading`): minste kvadraters
+plantilpasning (z = a·x + b·y + c) gjennom DEM-ens utjevnede høydegitter. En slik
+tilpasning har en nyttig matematisk egenskap: gjennomsnittlig avvik fra terrenget er
+alltid null når skjæringspunktet c er fritt valgt, som betyr at **kuttet volum alltid
+balanserer eksakt mot fylt volum** - verifisert som en eksplisitt invariant i testene
+(`test_cut_always_balances_fill_by_construction`), både for terrengets naturlige
+helning og for en påtvunget mål-helning (flatt eller en spesifikk %). For en ønsket
+helningsgrad beholdes terrengets egen naturlige helningsretning, men størrelsen
+skaleres til ønsket verdi og skjæringspunktet beregnes på nytt for fortsatt å
+balansere kutt/fylling.
+
+Resultatet vises som et fargelagt gitter i kartet (rødt = kutt/skjæring, blått =
+fylling, styrke = mengde) og en rapport med kuttet/fylt volum i fast masse, pluss løs
+masse (samme "type masse"-omregningsfaktor som i grøfte-masseberegningen over) for å
+anslå maskin-/lastebilbehov ved å flytte massene internt på jordet. Ytelse målt:
+~0,5 s for 1 000×1 000 celler (mye billigere enn både A*-ruteforslaget og
+søkk-deteksjonen).
+
+**Grov overslagsberegning, ikke en byggeklar planeringsplan**: kjenner ikke til
+jordart/bæreevne, tar ikke hensyn til hindringer (bygninger, trær, stein) i arealet,
+og forutsetter at all kuttet masse gjenbrukes som fylling internt på stedet (ikke
+kjørt bort/inn).
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

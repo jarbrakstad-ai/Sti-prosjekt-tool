@@ -39,6 +39,7 @@
         <label><input type="radio" name="mode" value="analyze" checked /> Vurder eksisterende grøft/vannvei</label>
         <label><input type="radio" name="mode" value="suggest" /> Foreslå grøftetrasé</label>
         <label><input type="radio" name="mode" value="selfdrain" /> Sjekk selvdrenering</label>
+        <label><input type="radio" name="mode" value="grading" /> Planering (kutt/fyll)</label>
       </div>
 
       <form id="analyze-form">
@@ -107,6 +108,27 @@
         <button type="submit">Sjekk selvdrenering</button>
       </form>
 
+      <form id="grading-form" hidden>
+        <label>
+          Høydemodell (GeoTIFF DEM, projisert CRS i meter) – la stå tom hvis hentet automatisk over
+          <input type="file" id="grading-dem-file" accept=".tif,.tiff" />
+        </label>
+        <p class="hint">
+          Bruker hele det innlastede kartutsnittet - ingen egen områdemarkering nødvendig.
+          Finner den flate eller jevnt hellende flaten som balanserer kutt (skjæring) mot
+          fylling, for å jevne ut jordet i stedet for å grave en enkelt grøft.
+        </p>
+        <label>
+          Ønsket helning etter planering, %
+          <input type="number" id="grading-target-grade" value="0" step="0.1" min="0" />
+        </label>
+        <p class="hint">
+          0 % = helt flatt jorde. Over 0 % = jevn helning med denne styrken, i terrengets egen
+          naturlige hovedretning (finnes automatisk).
+        </p>
+        <button type="submit">Beregn planering</button>
+      </form>
+
       <label>
         Antatt jordart (for sidehelning i profiltegning av åpen kanal)
         <select id="jordart-select">
@@ -170,6 +192,7 @@
         <label><input type="checkbox" id="layer-jordsmonn" /> Jordsmonn (NIBIO, eksperimentell)</label>
         <label><input type="checkbox" id="layer-depressions" checked /> Søkk/lavpunkter</label>
         <label><input type="checkbox" id="layer-field-notes" checked /> Feltnotater (grunnforhold)</label>
+        <label><input type="checkbox" id="layer-grading" checked /> Kutt/fyll (planering)</label>
       </div>
       <div id="legend">
         <span class="dot ok"></span> Godt fall (drenerer, lav erosjonsrisiko)

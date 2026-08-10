@@ -12,6 +12,7 @@ from .dem import DemError, DemSampler
 from .dem_fetch import DemFetchError, fetch_dem_geotiff
 from .depressions import depressions_to_response, find_depressions
 from .gpx_io import TrailParseError, parse_trail
+from .grading import compute_grading, grading_to_response
 from .routing import RouteOptions, RoutingError, suggest_route
 from .schemas import AnalyzeResponse
 from .terrain_grid import build_terrain_grid
@@ -22,6 +23,10 @@ MAX_DEPRESSION_GRID_NODES = 1000 * 1000
 """Sikkerhetsgrense for /api/dem/depressions - søkk-analysen er langt
 billigere pr. celle enn A*-ruteforslaget (målt: ~1.7s for 700x700 celler),
 så grensen kan være mye høyere enn RouteOptions.max_grid_nodes."""
+
+MAX_GRADING_GRID_NODES = 1000 * 1000
+"""Sikkerhetsgrense for /api/dem/grading - plantilpasningen er svært billig
+(målt: ~0.5s for 1000x1000 celler)."""
 
 app.add_middleware(
     CORSMiddleware,
@@ -128,6 +133,49 @@ async def dem_depressions(
 
     depressions = find_depressions(dem_sampler, min_depth_m=min_depth_m)
     return depressions_to_response(dem_sampler, depressions)
+
+
+@app.post("/api/dem/grading")
+async def dem_grading(
+    dem: UploadFile = File(..., description="Høydemodell, GeoTIFF i projisert CRS (meter)"),
+    target_grade_pct: float = Form(
+        0.0,
+        description=(
+            "0 = flat målflate. Over 0 = jevn helning med denne styrken, i terrengets "
+            "egen naturlige hovedretning (fra minste kvadraters plantilpasning)."
+        ),
+    ),
+) -> dict:
+    """Areal-basert planering: finner den flate/jevnt hellende flaten som
+    balanserer kutt (skjæring) mot fylling over hele kartutsnittet, til
+    forskjell fra det linje-baserte grøfteforslaget. Grov overslagsberegning
+    - kjenner ikke til jordart/bæreevne eller hindringer i arealet, og
+    forutsetter at kuttet masse gjenbrukes som fylling internt på stedet."""
+    if target_grade_pct < 0:
+        raise HTTPException(status_code=400, detail="target_grade_pct kan ikke være negativ.")
+
+    dem_bytes = await dem.read()
+    try:
+        dem_sampler = DemSampler.from_geotiff_bytes(dem_bytes)
+    except DemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    n_rows, n_cols = dem_sampler.shape()
+    if n_rows * n_cols > MAX_GRADING_GRID_NODES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"DEM-en er for stor for planeringsberegning ({n_rows}x{n_cols} celler). "
+                f"Beskjær til et mindre område (maks {MAX_GRADING_GRID_NODES} celler)."
+            ),
+        )
+
+    try:
+        result = compute_grading(dem_sampler, target_grade_pct=target_grade_pct)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return grading_to_response(dem_sampler, result)
 
 
 @app.post("/api/suggest")

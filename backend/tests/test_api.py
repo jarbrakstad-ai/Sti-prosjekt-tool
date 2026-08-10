@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 import rasterio
 from affine import Affine
 from fastapi.testclient import TestClient
@@ -175,6 +176,21 @@ def test_depressions_endpoint_no_pit_returns_empty_list(tmp_path):
     )
     assert res.status_code == 200, res.text
     assert res.json()["depressions"] == []
+
+
+def test_grading_endpoint_end_to_end(tmp_path):
+    dem_bytes = make_geotiff_bytes(tmp_path)
+
+    res = client.post(
+        "/api/dem/grading",
+        files={"dem": ("dem.tif", dem_bytes, "image/tiff")},
+        data={"target_grade_pct": 0.0},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["applied_grade_pct"] == pytest.approx(0.0, abs=1e-6)
+    assert body["cut_m3"] == pytest.approx(body["fill_m3"], abs=1e-3)
+    assert body["grid"]["rows"] > 0 and body["grid"]["cols"] > 0
 
 
 def test_terrain_grid_endpoint_end_to_end(tmp_path):

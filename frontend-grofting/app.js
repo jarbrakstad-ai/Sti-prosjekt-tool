@@ -57,6 +57,8 @@ const waypointLayer = L.layerGroup(); // av som standard
 const compareLayer = L.layerGroup().addTo(map);
 const depressionLayer = L.layerGroup().addTo(map);
 const fieldNotesLayer = L.layerGroup().addTo(map);
+const gradingCanvasRenderer = L.canvas({ padding: 0.5 });
+const gradingLayer = L.layerGroup().addTo(map);
 
 const LAYER_BY_CHECKBOX = {
   "layer-trail-lines": trailLineLayer,
@@ -66,6 +68,7 @@ const LAYER_BY_CHECKBOX = {
   "layer-jordsmonn": jordsmonnLayer,
   "layer-depressions": depressionLayer,
   "layer-field-notes": fieldNotesLayer,
+  "layer-grading": gradingLayer,
 };
 
 for (const [checkboxId, layer] of Object.entries(LAYER_BY_CHECKBOX)) {
@@ -474,6 +477,7 @@ document.getElementById("fetch-dem-btn").addEventListener("click", async () => {
 const analyzeForm = document.getElementById("analyze-form");
 const suggestForm = document.getElementById("suggest-form");
 const selfdrainForm = document.getElementById("selfdrain-form");
+const gradingForm = document.getElementById("grading-form");
 
 document.querySelectorAll('input[name="mode"]').forEach((radio) => {
   radio.addEventListener("change", (e) => {
@@ -481,6 +485,7 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     analyzeForm.hidden = mode !== "analyze";
     suggestForm.hidden = mode !== "suggest";
     selfdrainForm.hidden = mode !== "selfdrain";
+    gradingForm.hidden = mode !== "grading";
     setStatus("");
     document.getElementById("report").innerHTML = "";
     document.getElementById("download-buttons").hidden = true;
@@ -488,11 +493,14 @@ document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     document.getElementById("view3d-buttons").hidden = true;
     document.getElementById("follow-gps-buttons").hidden = true;
     lastResultForSave = null;
+    lastRenderedResult = null;
+    lastGradingResult = null;
     trailLineLayer.clearLayers();
     trailLabelLayer.clearLayers();
     markerLayer.clearLayers();
     waypointLayer.clearLayers();
     depressionLayer.clearLayers();
+    gradingLayer.clearLayers();
   });
 });
 
@@ -1067,6 +1075,113 @@ selfdrainForm.addEventListener("submit", async (e) => {
   } catch (err) {
     setStatus(`Feil: ${err.message}`, true);
   }
+});
+
+// ---- Planering (areal-basert kutt/fyll, flatt eller jevn helning) ----
+function gradingColor(diffM, maxAbs) {
+  // Rødt = kutt (masse fjernes), blått = fylling (masse legges til), hvitt = ingen endring.
+  const t = maxAbs > 0 ? Math.max(-1, Math.min(1, diffM / maxAbs)) : 0;
+  if (t >= 0) {
+    const v = Math.round(255 * (1 - t));
+    return `rgb(255,${v},${v})`;
+  }
+  const v = Math.round(255 * (1 + t));
+  return `rgb(${v},${v},255)`;
+}
+
+function renderGrading(response) {
+  gradingLayer.clearLayers();
+  const grid = response.grid;
+  const cellRadius = (grid.cell_size_x_m + grid.cell_size_y_m) / 4;
+
+  let maxAbs = 0;
+  for (const row of grid.cut_fill_m) {
+    for (const v of row) maxAbs = Math.max(maxAbs, Math.abs(v));
+  }
+
+  for (let i = 0; i < grid.rows; i++) {
+    for (let j = 0; j < grid.cols; j++) {
+      const v = grid.cut_fill_m[i][j];
+      if (Math.abs(v) < 0.02) continue; // hopp over ~uendret for lesbarhet/ytelse
+      L.circle([grid.lats[i][j], grid.lons[i][j]], {
+        radius: cellRadius,
+        renderer: gradingCanvasRenderer,
+        stroke: false,
+        fillColor: gradingColor(v, maxAbs),
+        fillOpacity: 0.7,
+      })
+        .addTo(gradingLayer)
+        .bindPopup(`${v > 0 ? "Kutt" : "Fyll"}: ${Math.abs(v).toFixed(2)} m`);
+    }
+  }
+}
+
+function renderGradingReport(response) {
+  const report = document.getElementById("report");
+  const massType = document.getElementById("mass-type-select").value;
+  const factor = MASS_BULKING_FACTORS[massType] || MASS_BULKING_FACTORS.jord_sand_grus;
+
+  report.innerHTML = `
+    <h2>Planering</h2>
+    <p class="hint">Finner den flate/jevnt hellende flaten som balanserer kutt mot fylling over
+      hele kartutsnittet - en forenklet overslagsberegning. Kjenner ikke til jordart/bæreevne
+      eller hindringer (bygninger, trær, stein) i arealet, og forutsetter at kuttet masse
+      gjenbrukes som fylling internt på stedet.</p>
+    <table>
+      <tr><td>Totalt areal</td><td>${response.total_area_m2.toFixed(0)} m²</td></tr>
+      <tr><td>Terrengets naturlige helning</td><td>${response.natural_grade_pct} %</td></tr>
+      <tr><td>Anvendt målhelning</td><td>${response.applied_grade_pct} %</td></tr>
+      <tr><td>Fast masse å kutte</td><td>${response.cut_m3.toFixed(0)} m³</td></tr>
+      <tr><td>Fast masse å fylle</td><td>${response.fill_m3.toFixed(0)} m³</td></tr>
+      <tr><td>Løs masse å håndtere (kutt × ${factor})</td><td>${(response.cut_m3 * factor).toFixed(0)} m³</td></tr>
+    </table>
+    <p class="hint">Kutt (rødt i kartet) og fyll (blått) balanserer alltid eksakt for en
+      matematisk optimal flate - "type masse" over styrer bare omregningen til løs masse
+      (viktig for å anslå antall lastebillass/maskintimer ved flytting).</p>
+  `;
+}
+
+gradingForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const dem = getDemForRequest("grading-dem-file");
+  const apiBase = getApiBase();
+  const targetGrade = document.getElementById("grading-target-grade").value;
+
+  if (!dem) {
+    setStatus("Velg en DEM-fil, eller hent høydedata automatisk for kartutsnittet over.", true);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("dem", dem.blob, dem.filename);
+  formData.append("target_grade_pct", targetGrade);
+
+  setStatus("Beregner planering …");
+  try {
+    const res = await fetch(`${apiBase}/api/dem/grading`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "Ukjent feil");
+    }
+    const result = await res.json();
+    setStatus(`Ferdig. Kutt ${result.cut_m3.toFixed(0)} m³, fyll ${result.fill_m3.toFixed(0)} m³.`);
+    renderGrading(result);
+    renderGradingReport(result);
+    lastGradingResult = result;
+    const grid = result.grid;
+    const bounds = L.latLngBounds([
+      [grid.lats[0][0], grid.lons[0][0]],
+      [grid.lats[grid.rows - 1][grid.cols - 1], grid.lons[grid.rows - 1][grid.cols - 1]],
+    ]);
+    map.fitBounds(bounds, { padding: [20, 20] });
+  } catch (err) {
+    setStatus(`Feil: ${err.message}`, true);
+  }
+});
+
+let lastGradingResult = null;
+document.getElementById("mass-type-select").addEventListener("change", () => {
+  if (lastGradingResult && !gradingForm.hidden) renderGradingReport(lastGradingResult);
 });
 
 // ---- 3D-visning av trasé + terreng (Three.js) ----
