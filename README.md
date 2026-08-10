@@ -375,6 +375,26 @@ Notatene er knyttet til *stedet*, ikke til én bestemt foreslått trasé, og vis
 hvilken modus/trasé du har lastet. Se `FIELD_NOTE_CATEGORIES`/`saveFieldNote()` i
 `frontend-grofting/app.js`.
 
+### Masseberegning
+
+Egen seksjon i rapporten ("Masseberegning") som regner om traséens lengde til
+gravevolum, i **fast masse** (volumet slik det ligger i bakken) og **løs masse**
+(volumet etter oppgraving/lasting - det som faktisk avgjør antall lastebillass).
+Beregnes for begge oppbyggingsvariantene fra profiltegningen:
+
+- **Rørlagt grøft**: rektangulært tverrsnitt (bredde × dybde, justerbare inputfelt,
+  standard 0,8 × 1,1 m) × traséens lengde.
+- **Åpen kanal**: trapes-tverrsnitt (bunnbredde 0,4 m, dybde 0,8 m, sidehelning fra
+  jordart-valget - samme tall som profiltegningen bruker).
+
+**Type masse**-nedtrekksmenyen velger omregningsfaktor fast → løs masse: jord/sand/grus
+(× 1,5), leire (× 1,3, mer usikker pga. vanninnholdsavhengighet), fjell/sprengstein
+(× 2,0) - kilder: NVE Sikringshåndboka modul G2.001 og alminnelig anleggsteknisk
+tommelfingerregel. Grovt overslag, ikke NS 3420-presist - egnet til å anslå
+lastebilbehov/kostnadsstørrelsesorden, ikke som grunnlag for anbud. Se
+`buildMassCalculation()`/`MASS_BULKING_FACTORS` i `frontend-grofting/app.js`
+(regnestykket er verifisert numerisk mot håndberegnede tverrsnittsareal).
+
 Status: **idé-/valideringsstadiet**, ikke produksjonsklar. Noen kjente begrensninger:
 - Analysen bruker fortsatt sykkelsti-terskelverdiene i `backend/app/analysis.py`
   (half-rule, fall-line) under panseret – de vises ikke i denne frontenden, men er

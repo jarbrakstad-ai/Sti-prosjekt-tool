@@ -701,3 +701,23 @@ button {
 }
 #follow-gps-note-save { background: var(--color-primary); color: #fff; }
 #follow-gps-note-cancel { background: transparent; color: #e7ede9; border-color: rgba(255, 255, 255, 0.3); }
+
+#mass-calc-controls {
+  margin: 0 0 1.1rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+#mass-calc-controls label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-muted);
+}
+#mass-calc-controls label:last-child { margin-bottom: 0; }
+#mass-calc-controls input[type="number"] { width: 5rem; margin-top: 0; }

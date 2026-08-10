@@ -245,6 +245,55 @@ function buildConstructionSuggestions(summary) {
   return suggestions;
 }
 
+// Omregningsfaktor fast masse -> løs masse (volumet øker når massen graves
+// opp og lastes - avgjør hvor mange lastebillass/m³ løs masse man faktisk
+// trenger å kjøre bort). Kilder: NVE Sikringshåndboka modul G2.001 og
+// alminnelig anleggsteknisk tommelfingerregel (jord/sand/grus ~1,5, fjell/
+// sprengstein ~2,0); leire er mer usikker og varierer med vanninnhold -
+// bruker en midlere verdi. Grove tommelfingerregler, ikke NS 3420-presise tall.
+const MASS_BULKING_FACTORS = {
+  jord_sand_grus: 1.5,
+  leire: 1.3,
+  fjell_stein: 2.0,
+};
+
+const CHANNEL_DEPTH_M = 0.8; // typisk dybde for en åpen jordbruksgrøft
+const CHANNEL_BOTTOM_WIDTH_M = 0.4;
+
+/** Beregner utgravd volum ("fast masse", i bakken) og tilsvarende løs masse
+ * (etter oppgraving/lasting) for både rørlagt grøft (rektangulært tverrsnitt,
+ * bredde x dybde fra input-feltene) og åpen kanal (trapes-tverrsnitt med
+ * sidehelning fra jordart-valget). Grov overslagsberegning - endelig
+ * massevolum bør beregnes av entreprenør/fagperson ut fra faktisk oppmålt
+ * tverrsnitt og grunnforhold. */
+function buildMassCalculation(summary, jordart, massType) {
+  const length = summary.total_length_m;
+  const factor = MASS_BULKING_FACTORS[massType] || MASS_BULKING_FACTORS.jord_sand_grus;
+
+  const trenchWidth = parseFloat(document.getElementById("trench-width").value) || 0.8;
+  const trenchDepth = parseFloat(document.getElementById("trench-depth").value) || 1.1;
+  const trenchAreaM2 = trenchWidth * trenchDepth;
+  const trenchFastM3 = trenchAreaM2 * length;
+  const trenchLosM3 = trenchFastM3 * factor;
+
+  const ratio = SIDE_SLOPE_RATIO_BY_JORDART[jordart] || SIDE_SLOPE_RATIO_BY_JORDART.sand_silt;
+  const channelTopWidth = CHANNEL_BOTTOM_WIDTH_M + 2 * ratio * CHANNEL_DEPTH_M;
+  const channelAreaM2 = (CHANNEL_BOTTOM_WIDTH_M + channelTopWidth) / 2 * CHANNEL_DEPTH_M;
+  const channelFastM3 = channelAreaM2 * length;
+  const channelLosM3 = channelFastM3 * factor;
+
+  return {
+    factor,
+    trenchWidth,
+    trenchDepth,
+    trenchFastM3,
+    trenchLosM3,
+    channelAreaM2,
+    channelFastM3,
+    channelLosM3,
+  };
+}
+
 const SIDE_SLOPE_RATIO_BY_JORDART = { leire: 1.25, sand_silt: 1.5, finsand: 2.0 };
 const SIDE_SLOPE_LABEL_BY_JORDART = { leire: "leire", sand_silt: "sand/silt", finsand: "finsand" };
 
@@ -320,7 +369,9 @@ function renderReport(result, { suggested } = {}) {
   const notes = buildDrainageNotes(result.segments || []);
   const construction = buildConstructionSuggestions(s);
   const jordart = document.getElementById("jordart-select").value;
+  const massType = document.getElementById("mass-type-select").value;
   const profileDrawing = buildProfileDrawing(s, jordart);
+  const mass = buildMassCalculation(s, jordart, massType);
   report.innerHTML = `
     ${suggested ? "<h2>Foreslått grøftetrasé</h2><p class=\"hint\">Heuristisk forslag - bekreft i felt og vurder grunnforhold (jordart) før graving.</p>" : ""}
     <h2>Sammendrag</h2>
@@ -336,6 +387,19 @@ function renderReport(result, { suggested } = {}) {
     <p class="hint">Basert på NLRs veiledning for drenering/åpne kanaler. Grove tommelfingerregler - endelig
       dimensjonering bør gjøres av NLR eller annen fagperson, spesielt for areal/kapasitet og jordart.</p>
     <ul>${construction.map((c) => `<li>${c}</li>`).join("")}</ul>
+    <h2>Masseberegning</h2>
+    <p class="hint">Grovt anslag - omregningsfaktor fast → løs masse er en generell tommelfingerregel
+      (NVE Sikringshåndboka / vanlig anleggspraksis), ikke NS 3420-presis. Løs masse er det som
+      faktisk avgjør antall lastebillass.</p>
+    <table>
+      <tr><td>Tverrsnitt rørlagt grøft (${mass.trenchWidth} m × ${mass.trenchDepth} m)</td><td>${(mass.trenchWidth * mass.trenchDepth).toFixed(2)} m²</td></tr>
+      <tr><td>Fast masse, rørlagt grøft</td><td>${mass.trenchFastM3.toFixed(1)} m³</td></tr>
+      <tr><td><strong>Løs masse, rørlagt grøft</strong></td><td><strong>${mass.trenchLosM3.toFixed(1)} m³</strong></td></tr>
+      <tr><td>Tverrsnitt åpen kanal</td><td>${mass.channelAreaM2.toFixed(2)} m²</td></tr>
+      <tr><td>Fast masse, åpen kanal</td><td>${mass.channelFastM3.toFixed(1)} m³</td></tr>
+      <tr><td><strong>Løs masse, åpen kanal</strong></td><td><strong>${mass.channelLosM3.toFixed(1)} m³</strong></td></tr>
+      <tr><td>Omregningsfaktor brukt</td><td>× ${mass.factor}</td></tr>
+    </table>
     <h2>Profiltegning</h2>
     ${profileDrawing}
     ${renderWaypointsTable(result.waypoints)}
@@ -345,9 +409,13 @@ function renderReport(result, { suggested } = {}) {
 }
 
 let lastRenderedResult = null;
-document.getElementById("jordart-select").addEventListener("change", () => {
+function rerenderLastReport() {
   if (lastRenderedResult) renderReport(lastRenderedResult.result, { suggested: lastRenderedResult.suggested });
-});
+}
+document.getElementById("jordart-select").addEventListener("change", rerenderLastReport);
+document.getElementById("mass-type-select").addEventListener("change", rerenderLastReport);
+document.getElementById("trench-width").addEventListener("change", rerenderLastReport);
+document.getElementById("trench-depth").addEventListener("change", rerenderLastReport);
 
 function setStatus(message, isError = false) {
   const el = document.getElementById("status");
