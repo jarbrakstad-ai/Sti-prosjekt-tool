@@ -17,10 +17,29 @@ const FLAG_LABELS = {
 };
 
 const map = L.map("map").setView([61.0, 9.0], 6);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap-bidragsytere",
   maxZoom: 19,
 }).addTo(map);
+
+const satelliteLayer = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+    maxZoom: 19,
+  }
+);
+// Stedsnavn/veier oppå satellittbildet - uten dette blir satellittvisningen vanskelig å orientere seg i.
+const satelliteLabelsLayer = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19 }
+);
+const satelliteGroup = L.layerGroup([satelliteLayer, satelliteLabelsLayer]);
+
+L.control
+  .layers({ Kart: osmLayer, Satellitt: satelliteGroup }, undefined, { position: "topright" })
+  .addTo(map);
 
 window.addEventListener("resize", () => map.invalidateSize());
 window.addEventListener("orientationchange", () => setTimeout(() => map.invalidateSize(), 200));
