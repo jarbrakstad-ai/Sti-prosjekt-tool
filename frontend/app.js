@@ -37,8 +37,11 @@ const satelliteLabelsLayer = L.tileLayer(
 );
 const satelliteGroup = L.layerGroup([satelliteLayer, satelliteLabelsLayer]);
 
+// topleft - #layer-control (Vis i kart-panelet) er en egen absolutt-posisjonert
+// div oppå kartet i topright, utenfor Leaflets eget kontroll-lag, så de to ville
+// overlappet hverandre der.
 L.control
-  .layers({ Kart: osmLayer, Satellitt: satelliteGroup }, undefined, { position: "topright" })
+  .layers({ Kart: osmLayer, Satellitt: satelliteGroup }, undefined, { position: "topleft" })
   .addTo(map);
 
 window.addEventListener("resize", () => map.invalidateSize());
